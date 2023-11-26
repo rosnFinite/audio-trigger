@@ -4,12 +4,11 @@ import scipy
 import librosa
 from dash import Dash, dcc, State, Input, Output, callback
 from dash_iconify import DashIconify
+import json
 import os
 import sys
 import plotly.graph_objs as go
-from timeit import default_timer as timer
 
-import analyzer
 from recorder import AudioRecorder
 
 # this is a pointer to the module object instance itself.
@@ -195,57 +194,86 @@ app.layout = dmc.MantineProvider(
                                 dmc.AccordionPanel(
                                     children=[
                                         dmc.Text([
-                                            "In gleichen Abstand zu einer Audioquelle"
+                                            "In gleichen Abstand zu einer Audioquelle das "
                                             "Schallpegelmessgerät und Mikrofon aufstellen. Messungen zu "
                                             "unterschiedlichen dB(A)-Pegeln durchführen und Werte des Mikrofons "
                                             "abspeichern."
                                         ]),
                                         dmc.Space(h=10),
-                                        dmc.Paper(
-                                            p="md",
-                                            withBorder=True,
-                                            shadow="md",
-                                            children=[
-                                                dmc.NumberInput(
-                                                    id="db-value",
-                                                    label="dB(A)-Wert",
-                                                    description="Gemessen über Schallpegelmessgerät",
-                                                    value=40,
-                                                    min=0,
-                                                    step=5
-                                                ),
-                                                dmc.Space(h=10),
-                                                dmc.Text("Mikrofonwert", size="md"),
-                                                dmc.Text(id="microphone-value"),
-                                                dmc.Space(h=10),
-                                                dmc.Center(
-                                                    dmc.ButtonGroup(
-                                                        children=[
-                                                            dmc.Button(
-                                                                "Speichern",
-                                                                disabled=True,
-                                                                id="save-value-button",
-                                                                color="green"
+                                        dmc.Text([
+                                            "Es werden mindesten 3 Messungen empfohlen. Bei Abschluss der ",
+                                            "Kalibrierung wird diese in ein JSON-Format unter ",
+                                            dmc.Code("/calibration"),
+                                            "gespeichert."
+                                        ]),
+                                        dmc.Space(h=10),
+                                        dmc.Center(
+                                            dmc.Paper(
+                                                p="md",
+                                                withBorder=True,
+                                                shadow="md",
+                                                children=[
+                                                    dmc.Center(
+                                                        [
+                                                            dmc.NumberInput(
+                                                                id="db-value",
+                                                                label="dB(A)-Wert",
+                                                                description="Gemessen über Schallpegelmessgerät",
+                                                                value=40,
+                                                                min=0,
+                                                                step=5,
+                                                                style={"width": 270}
                                                             ),
-                                                            dmc.Button(
-                                                                "Zurücksetzen",
-                                                                id="reset-value-button",
-                                                                color="yellow"
+                                                            dmc.Space(w=20),
+                                                            dmc.Stack(
+                                                                [
+                                                                    dmc.Text("Mikrofonwert", size="md"),
+                                                                    dmc.Text(id="microphone-value"),
+                                                                ]
                                                             )
                                                         ]
+                                                    ),
+                                                    dmc.Space(h=10),
+                                                    dmc.Center(
+                                                        dmc.ButtonGroup(
+                                                            children=[
+                                                                dmc.Button(
+                                                                    "Speichern",
+                                                                    disabled=True,
+                                                                    id="save-value-button",
+                                                                    color="green"
+                                                                ),
+                                                                dmc.Button(
+                                                                    "Zurücksetzen",
+                                                                    id="reset-value-button",
+                                                                    color="yellow"
+                                                                )
+                                                            ]
+                                                        )
+                                                    ),
+                                                ]
+                                            ),
+                                        ),
+                                        dmc.Space(h=20),
+                                        dcc.Graph(id='db-microphone-graph'),
+                                        dmc.Space(h=20),
+                                        dmc.Stack(
+                                            [
+                                                dmc.Center(
+                                                    dmc.TextInput(
+                                                        id="calib-filename",
+                                                        label="Name der Kalibrierungsdatei",
+                                                        style={"width": 400}
                                                     )
                                                 ),
+                                                dmc.Button(
+                                                    "Kalibrierung abspeichern",
+                                                    disabled=True,
+                                                    id="save-calibration-button",
+                                                    color="green"
+                                                )
                                             ]
                                         ),
-                                        dmc.Space(h=10),
-                                        dcc.Graph(id='db-microphone-graph'),
-                                        dmc.Space(h=10),
-                                        dmc.Button(
-                                            "Kalibrierung abspeichern",
-                                            disabled=True,
-                                            id="save-calibration-button",
-                                            color="green"
-                                        )
                                     ],
                                 ),
                             ],
@@ -285,7 +313,8 @@ app.layout = dmc.MantineProvider(
                                                                size="lg",
                                                                color="yellow",
                                                                disabled=True,
-                                                               leftIcon=DashIconify(icon="solar:align-horizonta-spacing-bold"), )
+                                                               leftIcon=DashIconify(
+                                                                   icon="solar:align-horizonta-spacing-bold"), )
                                                 ]
                                             )
                                         ),
@@ -322,6 +351,8 @@ app.layout = dmc.MantineProvider(
     ],
 )
 
+
+# TODO: Bei Wechsel des ausgewählten Mikrofons den aktuellen Stream abbrechen und einen neuen Starten
 
 @callback(
     Output("mantine-provider", "theme"),
@@ -462,15 +493,17 @@ def update_microphone_value_in_calib(n_intervals):
     State("db-value", "value"),
     prevent_initial_call=True
 )
-def on_calibration_save_pressed(n_clicks, value):
+def on_calibration_value_save_pressed(n_clicks, value):
     if value in this.db_to_mic_values.keys():
         this.db_to_mic_values[value][1] += 1
         this.db_to_mic_values[value][0] = (this.db_to_mic_values[value][0] +
-                                           (this.mic_value - this.db_to_mic_values[value][0]) / this.db_to_mic_values[value][1])
+                                           (this.mic_value - this.db_to_mic_values[value][0]) /
+                                           this.db_to_mic_values[value][1])
     else:
         this.db_to_mic_values[value] = [this.mic_value, 1]
     print("save")
-    fig = go.Figure(go.Scatter(x=list(this.db_to_mic_values.keys()), y=[x[0] for x in this.db_to_mic_values.values()], mode='markers'))
+    fig = go.Figure(go.Scatter(x=list(this.db_to_mic_values.keys()), y=[x[0] for x in this.db_to_mic_values.values()],
+                               mode='markers'))
     fig.update_layout(
         xaxis_title="dB(A)-Wert",
         yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
@@ -489,13 +522,31 @@ def on_calibration_save_pressed(n_clicks, value):
 )
 def on_calibration_reset_pressed(n_clicks):
     this.db_to_mic_values = dict()
-    fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers',))
+    fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers', ))
     fig.update_layout(
         xaxis_title="dB(A)-Wert",
         yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
         margin=dict(l=5, r=5, t=5, b=10),
     )
     return fig, True
+
+
+@callback(
+    [
+        Output("save-calibration-button", "disabled", allow_duplicate=True),
+        Output("calib-filename", "error")
+    ],
+
+    Input("save-calibration-button", "n_clicks"),
+    State("calib-filename", "value"),
+    prevent_initial_call=True
+)
+def on_calibration_save_pressed(n_clicks, filename):
+    if filename == "":
+        return False, "Bitte Dateiname eingeben"
+    with open(f"../calibration/{filename}.json", "w+") as f:
+        json.dump(this.db_to_mic_values, f, indent=4)
+    return True, ""
 
 
 @callback(
