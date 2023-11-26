@@ -8,6 +8,8 @@ import os
 import sys
 import plotly.graph_objs as go
 from timeit import default_timer as timer
+
+import analyzer
 from recorder import AudioRecorder
 
 # this is a pointer to the module object instance itself.
@@ -16,6 +18,10 @@ this = sys.modules[__name__]
 this.recorder = AudioRecorder(buffer_size=1)
 
 signal_graph_x = [x for x in range(this.recorder.frames.maxlen * this.recorder.chunksize - 1, -1, -1)]
+
+# key is dB(A) value and value is the mean amplitude of the mic
+this.db_to_mic_values = dict()
+this.mic_value = 0
 
 module_path = os.path.abspath(__file__)
 module_dir = os.path.dirname(module_path)
@@ -69,7 +75,6 @@ app = Dash(
         "https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;900&display=swap"
     ],
 )
-
 app.layout = dmc.MantineProvider(
     id="mantine-provider",
     theme={
@@ -179,44 +184,132 @@ app.layout = dmc.MantineProvider(
                     ]
                 ),
                 dmc.Space(h=10),
-                dmc.Center(
-                    dmc.ButtonGroup(
-                        children=[
-                            dmc.Button("Start",
-                                       id="start-button",
-                                       size="lg",
-                                       color="green",
-                                       disabled=True,
-                                       leftIcon=DashIconify(icon="solar:play-outline"), ),
-                            dmc.Button("Stop",
-                                       id="stop-button",
-                                       size="lg",
-                                       color="red",
-                                       disabled=True,
-                                       leftIcon=DashIconify(icon="solar:stop-outline"), ),
-                            dmc.Button("Trigger",
-                                       id="trigger-button",
-                                       size="lg",
-                                       color="yellow",
-                                       disabled=True,
-                                       leftIcon=DashIconify(icon="solar:align-horizonta-spacing-bold"),)
-                        ]
-                    )
+                dmc.Accordion(
+                    id="calibration-menu",
+                    variant="separated",
+                    chevronPosition="right",
+                    children=[
+                        dmc.AccordionItem(
+                            [
+                                dmc.AccordionControl("Kalibrierung"),
+                                dmc.AccordionPanel(
+                                    children=[
+                                        dmc.Text([
+                                            "In gleichen Abstand zu einer Audioquelle"
+                                            "Schallpegelmessgerät und Mikrofon aufstellen. Messungen zu "
+                                            "unterschiedlichen dB(A)-Pegeln durchführen und Werte des Mikrofons "
+                                            "abspeichern."
+                                        ]),
+                                        dmc.Space(h=10),
+                                        dmc.Paper(
+                                            p="md",
+                                            withBorder=True,
+                                            shadow="md",
+                                            children=[
+                                                dmc.NumberInput(
+                                                    id="db-value",
+                                                    label="dB(A)-Wert",
+                                                    description="Gemessen über Schallpegelmessgerät",
+                                                    value=40,
+                                                    min=0,
+                                                    step=5
+                                                ),
+                                                dmc.Space(h=10),
+                                                dmc.Text("Mikrofonwert", size="md"),
+                                                dmc.Text(id="microphone-value"),
+                                                dmc.Space(h=10),
+                                                dmc.Center(
+                                                    dmc.ButtonGroup(
+                                                        children=[
+                                                            dmc.Button(
+                                                                "Speichern",
+                                                                disabled=True,
+                                                                id="save-value-button",
+                                                                color="green"
+                                                            ),
+                                                            dmc.Button(
+                                                                "Zurücksetzen",
+                                                                id="reset-value-button",
+                                                                color="yellow"
+                                                            )
+                                                        ]
+                                                    )
+                                                ),
+                                            ]
+                                        ),
+                                        dmc.Space(h=10),
+                                        dcc.Graph(id='db-microphone-graph'),
+                                        dmc.Space(h=10),
+                                        dmc.Button(
+                                            "Kalibrierung abspeichern",
+                                            disabled=True,
+                                            id="save-calibration-button",
+                                            color="green"
+                                        )
+                                    ],
+                                ),
+                            ],
+                            value="calibration"
+                        )
+                    ]
                 ),
-                dmc.Space(h=20),
-                dcc.Graph(
-                    id='signal-graph'
-                ),
-                dmc.Space(h=20),
-                dcc.Graph(
-                    id='frequency-graph'
-                ),
-                dmc.Affix(
-                    dmc.Badge(id="note-text",
-                              size="xl",
-                              variant="gradient",
-                              gradient={"from": "teal", "to": "lime", "deg": 105}, ),
-                    position={"bottom": 20, "right": 20}
+                dmc.Space(h=10),
+                dmc.Accordion(
+                    id="trigger-menu",
+                    variant="separated",
+                    chevronPosition="right",
+                    value="open",
+                    children=[
+                        dmc.AccordionItem(
+                            [
+                                dmc.AccordionControl("Trigger"),
+                                dmc.AccordionPanel(
+                                    [
+                                        dmc.Center(
+                                            dmc.ButtonGroup(
+                                                children=[
+                                                    dmc.Button("Start",
+                                                               id="start-button",
+                                                               size="lg",
+                                                               color="green",
+                                                               disabled=True,
+                                                               leftIcon=DashIconify(icon="solar:play-outline"), ),
+                                                    dmc.Button("Stop",
+                                                               id="stop-button",
+                                                               size="lg",
+                                                               color="red",
+                                                               disabled=True,
+                                                               leftIcon=DashIconify(icon="solar:stop-outline"), ),
+                                                    dmc.Button("Trigger",
+                                                               id="trigger-button",
+                                                               size="lg",
+                                                               color="yellow",
+                                                               disabled=True,
+                                                               leftIcon=DashIconify(icon="solar:align-horizonta-spacing-bold"), )
+                                                ]
+                                            )
+                                        ),
+                                        dmc.Space(h=20),
+                                        dcc.Graph(
+                                            id='signal-graph'
+                                        ),
+                                        dmc.Space(h=20),
+                                        dcc.Graph(
+                                            id='frequency-graph'
+                                        ),
+                                        dmc.Affix(
+                                            dmc.Badge(id="note-text",
+                                                      size="xl",
+                                                      variant="gradient",
+                                                      gradient={"from": "teal", "to": "lime", "deg": 105}, ),
+                                            position={"bottom": 20, "right": 20}
+                                        )
+                                    ]
+                                )
+                            ],
+                            value="trigger"
+                        )
+                    ]
                 )
             ]
         ),
@@ -250,10 +343,11 @@ def change_color_scheme(n_clicks, theme):
         Output("frequency-graph", "figure"),
         Output("note-text", "children"),
     ],
-    Input("interval-component", "n_intervals")
+    Input("interval-component", "n_intervals"),
+    State("calibration-menu", "value")
 )
-def update_live_graph(n_intervals):
-    if this.recorder.stream is None:
+def update_live_graph(n_intervals, value):
+    if this.recorder.stream is None or value == "calibration":
         return default_plot, default_plot, "Kein Audiosignal"
     data = this.recorder.get_audio_data()
     # Plot for audio signal
@@ -263,21 +357,145 @@ def update_live_graph(n_intervals):
     )
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
-    len_data = len(data)
-    channel_data = np.zeros(2 ** (int(np.ceil(np.log2(len_data)))))
-    channel_data[0:len_data] = data
-    fourier = scipy.fft.fft(channel_data)
+    fourier = scipy.fft.fft(data)
     fourier_to_plot = fourier[0:len(fourier) // 2]
     w = np.linspace(0, this.recorder.rate, len(fourier))[0:len(fourier) // 2]
     freq_fig = go.Figure()
     freq_fig.update_layout(
         margin=dict(l=5, r=5, t=5, b=10),
     )
-    freq_fig.add_trace(go.Scatter(x=w, y=np.abs(fourier_to_plot)))
-    amp = fourier_to_plot.argmax()
+    abs_freq = np.abs(fourier_to_plot)
+    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
+    amp = abs_freq.argmax()
     freq = w[amp]
     note = librosa.hz_to_note(freq)
-    return signal_fig, freq_fig, f"{note} ({freq:.2f})"
+    scaled = abs_freq / abs_freq[amp]
+    score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
+    power = np.mean(np.square(data))
+    db = 10 * np.log10(power / 1) + 40
+    # print(np.mean(np.abs(data)))
+    return signal_fig, freq_fig, f"{note} ({freq:.2f}) {score:.2f} DB:{np.mean(db):.2f}"
+
+
+@callback(
+    [
+        Output("signal-graph", "figure", allow_duplicate=True),
+        Output("frequency-graph", "figure", allow_duplicate=True),
+        Output("note-text", "children", allow_duplicate=True),
+    ],
+    Input("load-file-button", "n_clicks"),
+    State("audio-file-select", "value"),
+    prevent_initial_call=True
+)
+def update_file_graph(n_clicks, file_select_value):
+    rate, data = scipy.io.wavfile.read(os.path.join("../audio", file_select_value))
+    signal_fig = go.Figure()
+    signal_fig.update_layout(
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
+    # Plot for frequencies
+    fourier = scipy.fft.fft(data)
+    fourier_to_plot = fourier[0:len(fourier) // 2]
+    w = np.linspace(0, rate, len(fourier))[0:len(fourier) // 2]
+    freq_fig = go.Figure()
+    freq_fig.update_layout(
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    abs_freq = np.abs(fourier_to_plot)
+    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
+    amp = abs_freq.argmax()
+    freq = w[amp]
+    note = librosa.hz_to_note(freq)
+    scaled = abs_freq / abs_freq[amp]
+    score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
+    return signal_fig, freq_fig, f"{note} ({freq:.2f}) {score:.2f}"
+
+
+@callback(
+    [
+        Output("save-value-button", "disabled"),
+        Output("interval-component", "disabled", allow_duplicate=True),
+        Output("db-microphone-graph", "figure", allow_duplicate=True)
+    ],
+    Input("calibration-menu", "value"),
+    State("microphone-select", "value"),
+    prevent_initial_call=True
+)
+def hanlde_recording_on_calibration(calib_value, mic_value):
+    fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers', ))
+    fig.update_layout(
+        xaxis_title="dB(A)-Wert",
+        yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    if calib_value != "calibration":
+        if this.recorder.stream is not None:
+            this.recorder.stop_stream()
+        return True, True, fig
+    if mic_value == -1:
+        print("open but no selection")
+        return True, True, fig
+    print("start recording")
+    this.recorder.start_stream(input_device_index=mic_value)
+    return False, False, fig
+
+
+@callback(
+    Output("microphone-value", "children"),
+    Input("interval-component", "n_intervals")
+)
+def update_microphone_value_in_calib(n_intervals):
+    if this.recorder.stream is None:
+        return "Kein Audiosignal"
+    data = this.recorder.frames[-1]
+    this.mic_value = np.mean(np.abs(data))
+    return f"{this.mic_value:.3f}"
+
+
+@callback(
+    [
+        Output("db-microphone-graph", "figure", allow_duplicate=True),
+        Output("save-calibration-button", "disabled", allow_duplicate=True)
+    ],
+    Input("save-value-button", "n_clicks"),
+    State("db-value", "value"),
+    prevent_initial_call=True
+)
+def on_calibration_save_pressed(n_clicks, value):
+    if value in this.db_to_mic_values.keys():
+        this.db_to_mic_values[value][1] += 1
+        this.db_to_mic_values[value][0] = (this.db_to_mic_values[value][0] +
+                                           (this.mic_value - this.db_to_mic_values[value][0]) / this.db_to_mic_values[value][1])
+    else:
+        this.db_to_mic_values[value] = [this.mic_value, 1]
+    print("save")
+    fig = go.Figure(go.Scatter(x=list(this.db_to_mic_values.keys()), y=[x[0] for x in this.db_to_mic_values.values()], mode='markers'))
+    fig.update_layout(
+        xaxis_title="dB(A)-Wert",
+        yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    return fig, False
+
+
+@callback(
+    [
+        Output("db-microphone-graph", "figure", allow_duplicate=True),
+        Output("save-calibration-button", "disabled", allow_duplicate=True)
+    ],
+    Input("reset-value-button", "n_clicks"),
+    prevent_initial_call=True
+)
+def on_calibration_reset_pressed(n_clicks):
+    this.db_to_mic_values = dict()
+    fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers',))
+    fig.update_layout(
+        xaxis_title="dB(A)-Wert",
+        yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    return fig, True
 
 
 @callback(
@@ -288,15 +506,18 @@ def update_live_graph(n_intervals):
     ],
     Input("start-button", "n_clicks"),
     State("microphone-select", "value"),
+    State("calibration-menu", "value"),
     prevent_initial_call=True
 )
-def start_recording(n_clicks, value):
+def start_recording(n_clicks, mic_value, calib_value):
     print("Try start recording")
-    print(value)
-    if value == -1:
+    print(mic_value)
+    if calib_value == "calibration":
+        return False, True, True
+    if mic_value == -1:
         print("No device selected")
         return False, True, True
-    this.recorder.start_stream(input_device_index=value)
+    this.recorder.start_stream(input_device_index=mic_value)
     return True, False, False
 
 
@@ -318,7 +539,7 @@ def stop_recording(n_clicks):
 @callback(
     Output("microphone-select", "value", allow_duplicate=True),
     Output("start-button", "disabled"),
-    Input("audio-file-select","value"),
+    Input("audio-file-select", "value"),
     State("microphone-select", "value"),
     prevent_initial_call=True
 )
@@ -331,7 +552,7 @@ def update_mic_selection(file_select_value, mic_select_value):
 @callback(
     Output("audio-file-select", "value", allow_duplicate=True),
     Output("load-file-button", "disabled"),
-    Input("microphone-select","value"),
+    Input("microphone-select", "value"),
     State("audio-file-select", "value"),
     prevent_initial_call=True
 )
@@ -339,41 +560,6 @@ def update_file_selection(mic_select_value, file_select_value):
     if mic_select_value == -1:
         return file_select_value, False
     return "", True
-
-
-@callback(
-    [
-        Output("signal-graph", "figure", allow_duplicate=True),
-        Output("frequency-graph", "figure", allow_duplicate=True),
-        Output("note-text", "children", allow_duplicate=True),
-    ],
-    Input("load-file-button", "n_clicks"),
-    State("audio-file-select", "value"),
-    prevent_initial_call=True
-)
-def update_file_graph(n_clicks, file_select_value):
-    rate, data = scipy.io.wavfile.read(os.path.join("../audio", file_select_value))
-    signal_fig = go.Figure()
-    signal_fig.update_layout(
-        margin=dict(l=5, r=5, t=5, b=10),
-    )
-    signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
-    # Plot for frequencies
-    len_data = len(data)
-    channel_data = np.zeros(2 ** (int(np.ceil(np.log2(len_data)))))
-    channel_data[0:len_data] = data
-    fourier = scipy.fft.fft(channel_data)
-    fourier_to_plot = fourier[0:len(fourier) // 2]
-    w = np.linspace(0, rate, len(fourier))[0:len(fourier) // 2]
-    freq_fig = go.Figure()
-    freq_fig.update_layout(
-        margin=dict(l=5, r=5, t=5, b=10),
-    )
-    freq_fig.add_trace(go.Scatter(x=w, y=np.abs(fourier_to_plot)))
-    amp = fourier_to_plot.argmax()
-    freq = w[amp]
-    note = librosa.hz_to_note(freq)
-    return signal_fig, freq_fig, note
 
 
 if __name__ == "__main__":

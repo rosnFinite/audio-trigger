@@ -29,7 +29,8 @@ class AudioRecorder:
         return devices
 
     def __recording_callback(self, input_data, frame_count, time_info, flags):
-        self.frames.append(np.frombuffer(input_data, dtype=np.int16))
+        frame = np.frombuffer(input_data, dtype=np.int16)
+        self.frames.append(frame)
         return input_data, pyaudio.paContinue
 
     def start_stream(self, input_device_index):
