@@ -184,7 +184,7 @@ app.layout = dmc.MantineProvider(
                 ),
                 dmc.Space(h=10),
                 dmc.Accordion(
-                    id="calibration-menu",
+                    id="menu",
                     variant="separated",
                     chevronPosition="right",
                     children=[
@@ -278,16 +278,7 @@ app.layout = dmc.MantineProvider(
                                 ),
                             ],
                             value="calibration"
-                        )
-                    ]
-                ),
-                dmc.Space(h=10),
-                dmc.Accordion(
-                    id="trigger-menu",
-                    variant="separated",
-                    chevronPosition="right",
-                    value="open",
-                    children=[
+                        ),
                         dmc.AccordionItem(
                             [
                                 dmc.AccordionControl("Trigger"),
@@ -375,7 +366,7 @@ def change_color_scheme(n_clicks, theme):
         Output("note-text", "children"),
     ],
     Input("interval-component", "n_intervals"),
-    State("calibration-menu", "value")
+    State("menu", "value")
 )
 def update_live_graph(n_intervals, value):
     if this.recorder.stream is None or value == "calibration":
@@ -447,29 +438,29 @@ def update_file_graph(n_clicks, file_select_value):
     [
         Output("save-value-button", "disabled"),
         Output("interval-component", "disabled", allow_duplicate=True),
-        Output("db-microphone-graph", "figure", allow_duplicate=True)
+        Output("db-microphone-graph", "figure", allow_duplicate=True),
+        Output("start-button", "disabled", allow_duplicate=True),
+        Output("stop-button", "disabled", allow_duplicate=True),
     ],
-    Input("calibration-menu", "value"),
+    Input("menu", "value"),
     State("microphone-select", "value"),
     prevent_initial_call=True
 )
-def hanlde_recording_on_calibration(calib_value, mic_value):
+def hanlde_recording_on_menu_change(menu_value, mic_value):
     fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers', ))
     fig.update_layout(
         xaxis_title="dB(A)-Wert",
         yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
         margin=dict(l=5, r=5, t=5, b=10),
     )
-    if calib_value != "calibration":
-        if this.recorder.stream is not None:
-            this.recorder.stop_stream()
-        return True, True, fig
+    if menu_value != "calibration":
+        return True, True, fig, False, True
     if mic_value == -1:
         print("open but no selection")
-        return True, True, fig
+        return True, True, fig, False, True
     print("start recording")
     this.recorder.start_stream(input_device_index=mic_value)
-    return False, False, fig
+    return False, False, fig, True, False
 
 
 @callback(
@@ -557,7 +548,7 @@ def on_calibration_save_pressed(n_clicks, filename):
     ],
     Input("start-button", "n_clicks"),
     State("microphone-select", "value"),
-    State("calibration-menu", "value"),
+    State("menu", "value"),
     prevent_initial_call=True
 )
 def start_recording(n_clicks, mic_value, calib_value):
