@@ -317,6 +317,10 @@ app.layout = dmc.MantineProvider(
                                         dcc.Graph(
                                             id='frequency-graph'
                                         ),
+                                        dmc.Space(h=20),
+                                        dcc.Graph(
+                                          id="heatmap"
+                                        ),
                                         dmc.Affix(
                                             dmc.Badge(id="note-text",
                                                       size="xl",
@@ -363,6 +367,7 @@ def change_color_scheme(n_clicks, theme):
     [
         Output("signal-graph", "figure"),
         Output("frequency-graph", "figure"),
+        Output("heatmap", "figure"),
         Output("note-text", "children"),
     ],
     Input("interval-component", "n_intervals"),
@@ -370,7 +375,7 @@ def change_color_scheme(n_clicks, theme):
 )
 def update_live_graph(n_intervals, value):
     if this.recorder.stream is None or value == "calibration":
-        return default_plot, default_plot, "Kein Audiosignal"
+        return default_plot, default_plot, default_plot, "Kein Audiosignal"
     data = this.recorder.get_audio_data()
     # Plot for audio signal
     signal_fig = go.Figure()
@@ -396,7 +401,7 @@ def update_live_graph(n_intervals, value):
     power = np.mean(np.square(data))
     db = 10 * np.log10(power / 1) + 40
     # print(np.mean(np.abs(data)))
-    return signal_fig, freq_fig, f"{note} ({freq:.2f}) {score:.2f} DB:{np.mean(db):.2f}"
+    return signal_fig, freq_fig, default_plot, f"{note} ({freq:.2f}) {score:.2f} DB:{np.mean(db):.2f}"
 
 
 @callback(
