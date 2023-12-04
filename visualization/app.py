@@ -14,13 +14,20 @@ from recorder import AudioRecorder
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 # allows to assign variables to it
-this.recorder = AudioRecorder(buffer_size=1)
+this.recorder = AudioRecorder(buffer_size=1, rate=44100, chunksize=44100)
 
 signal_graph_x = [x for x in range(this.recorder.frames.maxlen * this.recorder.chunksize - 1, -1, -1)]
 
 # key is dB(A) value and value is the mean amplitude of the mic
 this.db_to_mic_values = dict()
 this.mic_value = 0
+# dB(A) TEST
+with open("../calibration/Logitech.json") as f:
+    data_dict = json.load(f)
+y_vals = [int(x) for x in data_dict.keys()]
+x_vals = [round(x[0], 3) for x in data_dict.values()]
+xp = np.linspace(x_vals[0], x_vals[-1], 1000)
+yinterp = np.interp(xp, x_vals, y_vals)
 
 module_path = os.path.abspath(__file__)
 module_dir = os.path.dirname(module_path)
@@ -383,25 +390,38 @@ def update_live_graph(n_intervals, value):
         margin=dict(l=5, r=5, t=5, b=10),
     )
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
+    mic_sens_dBV = -32
+    mic_sens_corr = np.power(10.0, mic_sens_dBV/20.0)
+    data = ((data/np.power(2.0, 15))*5.25) * mic_sens_corr
+    data_len = len(data)
+    f_vec = this.recorder.rate * np.arange(data_len/2)/data_len
+    mic_low_freq = 100
+    low_freq_loc = np.argmin(np.abs(f_vec-mic_low_freq))
+    fft_data = (np.abs(np.fft.fft(data))[0:int(np.floor(data_len/2))]) / data_len
+    fft_data[1:] = 2 * fft_data[1:]
+    max_loc = np.argmax(fft_data[low_freq_loc:]) + low_freq_loc
     # Plot for frequencies
-    fourier = scipy.fft.fft(data)
-    fourier_to_plot = fourier[0:len(fourier) // 2]
-    w = np.linspace(0, this.recorder.rate, len(fourier))[0:len(fourier) // 2]
     freq_fig = go.Figure()
     freq_fig.update_layout(
         margin=dict(l=5, r=5, t=5, b=10),
     )
-    abs_freq = np.abs(fourier_to_plot)
-    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
-    amp = abs_freq.argmax()
-    freq = w[amp]
-    note = librosa.hz_to_note(freq)
-    scaled = abs_freq / abs_freq[amp]
-    score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
-    power = np.mean(np.square(data))
-    db = 10 * np.log10(power / 1) + 40
+    freq_fig.add_trace(go.Scatter(x=f_vec, y=fft_data))
+    #abs_freq = np.abs(fourier_to_plot)
+    #freq_fig.add_trace(go.Scatter(x=frequency, y=amplitude_db))
+    #amp = abs_freq.argmax()
+    #freq = w[amp]
+    f_vec = f_vec[1:]
+    R_a = ((12194.0**2)*np.power(f_vec,4))/(
+                (np.power(f_vec, 2) + 20.6 ** 2) * np.sqrt((np.power(f_vec, 2) + 107.7 ** 2) * (np.power(f_vec, 2) + 737.9 ** 2)) * (np.power(f_vec, 2) + 12194.0 ** 2))
+    a_weight_data_f = (20*np.log10(R_a)+2.0)+(20*np.log10(fft_data[1:]/0.00002))
+    note = librosa.hz_to_note(f_vec[max_loc])
+    a_weight_sum = np.sum(np.power(10,a_weight_data_f/20)*0.00002)
+    #scaled = abs_freq / abs_freq[amp]
+    # score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
+    # db(A) Test
+    #index = np.argmin(np.abs(np.array(xp) - np.mean(np.abs(data))))
     # print(np.mean(np.abs(data)))
-    return signal_fig, freq_fig, default_plot, f"{note} ({freq:.2f}) {score:.2f} DB:{np.mean(db):.2f}"
+    return signal_fig, freq_fig, default_plot, f"{note} ({f_vec[max_loc]:.2f}, dB(A)={20*np.log10(a_weight_sum/0.00002):.2f})"
 
 
 @callback(
@@ -477,7 +497,7 @@ def update_microphone_value_in_calib(n_intervals):
         return "Kein Audiosignal"
     data = this.recorder.frames[-1]
     this.mic_value = np.mean(np.abs(data))
-    return f"{this.mic_value:.3f}"
+    return f"{this.mic_value:.3f}, {80 + librosa.power_to_db(this.mic_value, ref=22000):.2f}"
 
 
 @callback(
