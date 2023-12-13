@@ -1,18 +1,22 @@
 import dash_mantine_components as dmc
 import numpy as np
 import scipy
-from dash import Dash, dcc, State, Input, Output, callback
-from dash_iconify import DashIconify
-from typing import Tuple
+import sys
 import json
 import os
 import plotly.graph_objs as go
+from dash import Dash, dcc, State, Input, Output, callback
+from dash_iconify import DashIconify
+from typing import Tuple
 
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
 from recorder import AudioRecorder
-from utility import load_recording_devices, default_plot
-from processing.fourier import plot_abs_fft
+from utility import load_recording_devices, default_plot, get_audio_file_names, get_calibration_file_names
+from processing.fourier import plot_abs_fft, get_dba_level
+
+# this is a pointer to the module object instance itself.
+this = sys.modules[__name__]
 
 recorder = AudioRecorder(buffer_size=1, rate=44100)
 signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
@@ -20,12 +24,7 @@ signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize -
 # key is dB(A) value and value is the mean amplitude of the mic
 db_to_mic_values = dict()
 mic_value = 0
-
-module_path = os.path.abspath(__file__)
-module_dir = os.path.dirname(module_path)
-audio_files = [{"value": os.path.join(root, file), "label": file}
-               for root, _, files in os.walk(os.path.join(module_dir, "../audio"))
-               for file in files if file.endswith(".wav")]
+this.calib_factors = None
 
 
 app = Dash(
@@ -35,6 +34,7 @@ app = Dash(
         "https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;900&display=swap"
     ],
 )
+
 app.layout = dmc.MantineProvider(
     id="mantine-provider",
     theme={
@@ -95,8 +95,16 @@ app.layout = dmc.MantineProvider(
                             clearable=True,
                             id="audio-file-select",
                             value="",
-                            data=audio_files,
+                            data=get_audio_file_names(),
                             style={"width": 300}
+                        ),
+                        dmc.Select(
+                            label="dB(A) Kalibrierung",
+                            placeholder="auswählen",
+                            clearable=True,
+                            id="calibration-file-select",
+                            value="",
+                            data=get_calibration_file_names()
                         ),
                         dmc.Button(
                             "Laden",
@@ -107,6 +115,7 @@ app.layout = dmc.MantineProvider(
                         )
                     ]
                 ),
+                dmc.Center(dmc.Text(id="calibration-selection-text", color="green")),
                 dmc.Space(h=10),
                 dmc.Accordion(
                     id="menu",
@@ -194,6 +203,9 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
     freq_fig, note, score = plot_abs_fft(data, recorder.rate)
+    if this.calib_factors is not None:
+        dba = get_dba_level(data, recorder.rate, this.calib_factors)
+        return signal_fig, freq_fig, default_plot, f"{note} [{score:.2f}] [{dba:.2f}dB(A)]"
     return signal_fig, freq_fig, default_plot, f"{note} [{score:.2f}]"
 
 
@@ -324,6 +336,20 @@ def update_file_selection(mic_select_value: int, file_select_value: str) -> Tupl
     if mic_select_value == -1:
         return file_select_value, False
     return "", True
+
+
+@callback(
+    Output("calibration-selection-text", "children"),
+    Input("calibration-file-select", "value")
+)
+def on_calib_selection(calib_file_value: str):
+    if calib_file_value == "" or calib_file_value is None:
+        this.calib_factors = None
+        return ""
+    with open(calib_file_value) as f:
+        corr_factors = json.load(f)
+    this.calib_factors = corr_factors
+    return "Kalibrierungsfaktoren geladen"
 
 
 """

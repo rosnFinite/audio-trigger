@@ -2,8 +2,12 @@ import librosa
 import plotly.graph_objs as go
 import numpy as np
 import scipy
-
+import math
 from typing import Optional, Tuple
+from functools import lru_cache
+
+from webapp.processing.weighting import A_weight
+from webapp.utility import bisection, freezeargs
 
 
 def fft(data: np.array, rate: int):
@@ -80,3 +84,28 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     amp = abs_freq.argmax()
     scaled = abs_freq / abs_freq[amp]
     return scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
+
+
+def get_dba_level(data: np.ndarray, rate: int, corr_dict: dict[str, float]):
+    weighted_signal = A_weight(data, fs=rate)
+    rms_value = np.sqrt(np.mean(np.abs(weighted_signal) ** 2))
+    result = 20 * np.log10(rms_value)
+    xp, corr_interp = interp_correction(corr_dict)
+    idx = bisection(xp, result)
+    return result + corr_interp[idx]
+
+
+@freezeargs
+@lru_cache
+def interp_correction(corr_dict: dict[str, float]) -> Tuple[np.ndarray, np.ndarray]:
+    """Interpolates correction factors represented as a dictionary for key-value pairs. Key represents value
+    recorded by the microphone and dedicated value the correction value for dB(A) calculations.
+
+    :param corr_dict: Dictionary (Key-Value pairs) of microphone value and corresponding correction value.
+    :return:
+    """
+    key_list = [float(i) for i in list(corr_dict.keys())]
+    val_list = list(corr_dict.values())
+    xp = np.linspace(math.floor(min(key_list)), math.ceil(max(key_list)))
+    corr_interp = np.interp(xp, key_list, val_list)
+    return xp, corr_interp
