@@ -1,17 +1,18 @@
 import dash_mantine_components as dmc
 import numpy as np
 import scipy
-import librosa
 from dash import Dash, dcc, State, Input, Output, callback
 from dash_iconify import DashIconify
 from typing import Tuple
 import json
 import os
 import plotly.graph_objs as go
+
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
-
 from recorder import AudioRecorder
+from utility import load_recording_devices, default_plot
+from processing.fourier import plot_abs_fft
 
 recorder = AudioRecorder(buffer_size=1, rate=44100)
 signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
@@ -25,44 +26,6 @@ module_dir = os.path.dirname(module_path)
 audio_files = [{"value": os.path.join(root, file), "label": file}
                for root, _, files in os.walk(os.path.join(module_dir, "../audio"))
                for file in files if file.endswith(".wav")]
-
-default_plot = {
-    "layout": {
-        "xaxis": {
-            "visible": False
-        },
-        "yaxis": {
-            "visible": False
-        },
-        "annotations": [
-            {
-                "text": "Keine Daten zum Visualisieren",
-                "xref": "paper",
-                "yref": "paper",
-                "showarrow": False,
-                "font": {
-                    "size": 20
-                }
-            }
-        ]
-    }
-}
-
-
-def load_recording_devices():
-    """Functionality to receive all audio devices connected to the current system.
-
-    :return: A list of dictionaries each containing the keys 'value' and 'label'
-    """
-    info = recorder.p.get_host_api_info_by_index(0)
-    data = []
-    for i in range(0, info.get('deviceCount')):
-        if (recorder.p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
-            data.append({
-                "value": i,
-                "label": recorder.p.get_device_info_by_host_api_device_index(0, i).get('name')
-            })
-    return data
 
 
 app = Dash(
@@ -123,7 +86,7 @@ app.layout = dmc.MantineProvider(
                             clearable=True,
                             id="microphone-select",
                             value=-1,
-                            data=load_recording_devices(),
+                            data=load_recording_devices(recorder),
                             style={"width": 300},
                         ),
                         dmc.Select(
@@ -222,6 +185,7 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     if recorder.stream is None or value == "calibration":
         return default_plot, default_plot, default_plot, "Kein Audiosignal"
     data = recorder.get_audio_data()
+    data = data.copy()
     # Plot for audio signal
     signal_fig = go.Figure()
     signal_fig.update_layout(
@@ -229,24 +193,8 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     )
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
-    fourier = scipy.fft.fft(data)
-    fourier_to_plot = fourier[0:len(fourier) // 2]
-    w = np.linspace(0, recorder.rate, len(fourier))[0:len(fourier) // 2]
-    freq_fig = go.Figure()
-    freq_fig.update_layout(
-        margin=dict(l=5, r=5, t=5, b=10),
-    )
-    abs_freq = np.abs(fourier_to_plot)
-    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
-    amp = abs_freq.argmax()
-    freq = w[amp]
-    note = librosa.hz_to_note(freq)
-    scaled = abs_freq / abs_freq[amp]
-    score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
-    power = np.mean(np.square(data))
-    db = 10 * np.log10(power / 1) + 40
-    # print(np.mean(np.abs(data)))
-    return signal_fig, freq_fig, default_plot, f"{note} ({freq:.2f}) {score:.2f} DB:{np.mean(db):.2f}"
+    freq_fig, note, score = plot_abs_fft(data, recorder.rate)
+    return signal_fig, freq_fig, default_plot, f"{note} [{score:.2f}]"
 
 
 @callback(
@@ -274,21 +222,8 @@ def update_file_graph(n_clicks: int, file_select_value: str) -> Tuple[go.Figure,
     )
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
-    fourier = scipy.fft.fft(data)
-    fourier_to_plot = fourier[0:len(fourier) // 2]
-    w = np.linspace(0, rate, len(fourier))[0:len(fourier) // 2]
-    freq_fig = go.Figure()
-    freq_fig.update_layout(
-        margin=dict(l=5, r=5, t=5, b=10),
-    )
-    abs_freq = np.abs(fourier_to_plot)
-    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
-    amp = abs_freq.argmax()
-    freq = w[amp]
-    note = librosa.hz_to_note(freq)
-    scaled = abs_freq / abs_freq[amp]
-    score = scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
-    return signal_fig, freq_fig, f"{note} ({freq:.2f}) {score:.2f}"
+    freq_fig, note, score = plot_abs_fft(data, recorder.rate)
+    return signal_fig, freq_fig, f"{note} [{score:.2f}]"
 
 
 @callback(
