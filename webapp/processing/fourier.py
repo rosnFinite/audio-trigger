@@ -86,10 +86,12 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     return scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
 
 
-def get_dba_level(data: np.ndarray, rate: int, corr_dict: dict[str, float]):
+def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None):
     weighted_signal = A_weight(data, fs=rate)
     rms_value = np.sqrt(np.mean(np.abs(weighted_signal) ** 2))
     result = 20 * np.log10(rms_value)
+    if corr_dict is None:
+        return result
     xp, corr_interp = interp_correction(corr_dict)
     idx = bisection(xp, result)
     return result + corr_interp[idx]

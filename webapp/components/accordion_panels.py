@@ -27,12 +27,12 @@ CalibrationPanel = AccordionPanel(
         ]),
         Space(h=10),
         Text([
-            "Es werden mindesten 3 Messungen empfohlen. Bei Abschluss der ",
+            "Es werden mindestens 3 Messungen empfohlen. Bei Abschluss der ",
             "Kalibrierung wird diese in ein JSON-Format unter ",
             Code("/calibration"),
             "gespeichert."
         ]),
-        Space(h=10),
+        Space(h=20),
         Center(
             Paper(
                 p="md",
@@ -53,7 +53,7 @@ CalibrationPanel = AccordionPanel(
                             Space(w=20),
                             Stack(
                                 [
-                                    Text("Mikrofonwert", size="md"),
+                                    Text("Unkalib. dB(A)", size="md"),
                                     Text(id="microphone-value"),
                                 ]
                             )
@@ -88,7 +88,7 @@ CalibrationPanel = AccordionPanel(
                 Center(
                     TextInput(
                         id="calib-filename",
-                        label="Name der Kalibrierungsdatei",
+                        label="Name der Kalibrierungsdatei (ohne .json Endung)",
                         style={"width": 400}
                     )
                 ),

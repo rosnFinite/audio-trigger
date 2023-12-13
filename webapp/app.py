@@ -1,5 +1,4 @@
 import dash_mantine_components as dmc
-import numpy as np
 import scipy
 import sys
 import json
@@ -21,11 +20,10 @@ this = sys.modules[__name__]
 recorder = AudioRecorder(buffer_size=1, rate=44100)
 signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
 
-# key is dB(A) value and value is the mean amplitude of the mic
-db_to_mic_values = dict()
-mic_value = 0
+# key is dB(A), value list of 3 entries [#measurements, average uncalibrated db(A), difference]
+this.corr_dict = dict()
+this.uncalibrated_dba = 0
 this.calib_factors = None
-
 
 app = Dash(
     __name__,
@@ -251,8 +249,8 @@ def update_microphone_value_in_calib(n_intervals: int) -> str:
     if recorder.stream is None:
         return "Kein Audiosignal"
     data = recorder.frames[-1]
-    mic_value = np.mean(np.abs(data))
-    return f"{mic_value:.3f}"
+    this.uncalibrated_dba = get_dba_level(data, recorder.rate)
+    return f"{this.uncalibrated_dba:.3f}"
 
 
 """
@@ -348,7 +346,9 @@ def on_calib_selection(calib_file_value: str):
         return ""
     with open(calib_file_value) as f:
         corr_factors = json.load(f)
-    this.calib_factors = corr_factors
+    # only support correction factors recorded by this application {db(A)-value: [#measurements, uncalib dB(A), diff]}
+    # transform loaded json into format needed for dB(A) calibration {uncalib dB(A): diff}
+    this.calib_factors = {value[1]: value[2] for value in list(corr_factors.values())}
     return "Kalibrierungsfaktoren geladen"
 
 
@@ -375,19 +375,19 @@ def on_calibration_value_save_pressed(n_clicks: int, value: float) -> Tuple[go.F
     :param value: Selected reference db value.
     :return:
     """
-    if value in db_to_mic_values.keys():
-        db_to_mic_values[value][1] += 1
-        db_to_mic_values[value][0] = (db_to_mic_values[value][0] +
-                                      (mic_value - db_to_mic_values[value][0]) /
-                                      db_to_mic_values[value][1])
+    if value in this.corr_dict.keys():
+        this.corr_dict[value][0] += 1
+        this.corr_dict[value][1] = (this.corr_dict[value][1] +
+                                    (this.uncalibrated_dba - this.corr_dict[value][1]) /
+                                    this.corr_dict[value][0])
+        this.corr_dict[value][2] = value - this.corr_dict[value][1]
     else:
-        db_to_mic_values[value] = [mic_value, 1]
-    print("save")
-    fig = go.Figure(go.Scatter(x=list(db_to_mic_values.keys()), y=[x[0] for x in db_to_mic_values.values()],
+        this.corr_dict[value] = [1, this.uncalibrated_dba, value - this.uncalibrated_dba]
+    fig = go.Figure(go.Scatter(x=list(this.corr_dict.keys()), y=[x[2] for x in this.corr_dict.values()],
                                mode='markers'))
     fig.update_layout(
         xaxis_title="dB(A)-Wert",
-        yaxis_title="Durchn. Mikrofonamplitude (1 sek.)",
+        yaxis_title="Differenz zur Referenz [dB(A)]",
         margin=dict(l=5, r=5, t=5, b=10),
     )
     return fig, False
@@ -407,7 +407,7 @@ def on_calibration_reset_pressed(n_clicks: int) -> Tuple[go.Figure, bool]:
     :param n_clicks: Number of clicks performed on the "reset-value-button". Triggers this callback.
     :return:
     """
-    db_to_mic_values = dict()
+    this.corr_dict = dict()
     fig = go.Figure(go.Scatter(x=[], y=[], mode='lines+markers', ))
     fig.update_layout(
         xaxis_title="dB(A)-Wert",
@@ -437,7 +437,7 @@ def on_calibration_save_pressed(n_clicks: int, filename: str) -> Tuple[bool, str
     if filename == "":
         return False, "Bitte Dateiname eingeben"
     with open(f"../calibration/{filename}.json", "w+") as f:
-        json.dump(db_to_mic_values, f, indent=4)
+        json.dump(this.corr_dict, f, indent=4)
     return True, ""
 
 
