@@ -3,7 +3,7 @@ import plotly.graph_objs as go
 import numpy as np
 import scipy
 import math
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from functools import lru_cache
 
 from webapp.processing.weighting import A_weight
@@ -24,16 +24,33 @@ def fft(data: np.array, rate: int):
     return fourier, fourier_to_plot, abs_freq, w
 
 
-def get_note(data: Optional[np.ndarray] = None,
-             rate: Optional[int] = None,
-             abs_freq: Optional[np.ndarray] = None,
-             w: Optional[np.ndarray] = None) -> str:
+def get_dominant_note(data: Optional[np.ndarray] = None,
+                      rate: Optional[int] = None,
+                      abs_freq: Optional[np.ndarray] = None,
+                      w: Optional[np.ndarray] = None) -> str:
     """Returns the strongest represented musical note.
 
     :param w:
     :param abs_freq:
     :param data: Numpy array of the recorded audio data.
     :param rate: Sampling rate of the recorder.
+    :return:
+    """
+    freq = get_dominant_freq(data, rate, abs_freq, w)
+    note = librosa.hz_to_note(freq)
+    return note
+
+
+def get_dominant_freq(data: Optional[np.ndarray] = None,
+                      rate: Optional[int] = None,
+                      abs_freq: Optional[np.ndarray] = None,
+                      w: Optional[np.ndarray] = None) -> np.ndarray[Any, np.dtype[Any]]:
+    """Returns the strongest represented frequency.
+
+    :param data: Numpy array of the recorded audio data.
+    :param rate: Sampling rate of the recorder.
+    :param abs_freq:
+    :param w:
     :return:
     """
     if abs_freq is None or w is None:
@@ -43,8 +60,7 @@ def get_note(data: Optional[np.ndarray] = None,
             raise ValueError("No fft_data was provided. Missing data and rate. ")
     amp = abs_freq.argmax()
     freq = w[amp]
-    note = librosa.hz_to_note(freq)
-    return note
+    return freq
 
 
 def plot_abs_fft(data: np.ndarray, rate: int) -> Tuple[go.Figure, str, float]:
@@ -61,7 +77,7 @@ def plot_abs_fft(data: np.ndarray, rate: int) -> Tuple[go.Figure, str, float]:
     )
     abs_freq = np.abs(fourier_to_plot)
     freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
-    note = get_note(abs_freq=abs_freq, w=w)
+    note = get_dominant_note(abs_freq=abs_freq, w=w)
     score = calc_quality_score(abs_freq=abs_freq)
     return freq_fig, note, score
 
@@ -83,7 +99,7 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
             raise ValueError("No fft_data was provided. Missing data and rate. ")
     amp = abs_freq.argmax()
     scaled = abs_freq / abs_freq[amp]
-    return scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:]))
+    return abs(scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:])))
 
 
 def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None):
@@ -93,7 +109,15 @@ def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, flo
     if corr_dict is None:
         return result
     xp, corr_interp = interp_correction(corr_dict)
+    print(corr_interp)
+    print(xp)
+    print(result)
     idx = bisection(xp, result)
+    if idx == -1:
+        idx = 0
+    else:
+        idx -= 1
+    print(idx)
     return result + corr_interp[idx]
 
 
@@ -106,6 +130,8 @@ def interp_correction(corr_dict: dict[str, float]) -> Tuple[np.ndarray, np.ndarr
     :param corr_dict: Dictionary (Key-Value pairs) of microphone value and corresponding correction value.
     :return:
     """
+    # sort dict
+    corr_dict = dict(sorted(corr_dict.items()))
     key_list = [float(i) for i in list(corr_dict.keys())]
     val_list = list(corr_dict.values())
     xp = np.linspace(math.floor(min(key_list)), math.ceil(max(key_list)))

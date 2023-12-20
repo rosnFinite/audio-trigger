@@ -6,7 +6,6 @@ import os
 from typing import List
 from frozendict import frozendict
 
-from recorder import AudioRecorder
 
 
 module_path = os.path.abspath(__file__)
@@ -36,7 +35,7 @@ default_plot = {
 }
 
 
-def load_recording_devices(recorder: AudioRecorder):
+def load_recording_devices(recorder):
     """Functionality to receive all audio devices connected to the current system.
 
     :return: A list of dictionaries each containing the keys 'value' and 'label'

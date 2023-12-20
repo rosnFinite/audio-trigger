@@ -1,7 +1,14 @@
+import json
+from typing import List, Optional
+
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
+import audioop
+import plotly.graph_objs as go
+
+from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
 
 class AudioRecorder:
@@ -14,6 +21,7 @@ class AudioRecorder:
         self.frames = collections.deque([] * int((buffer_size*rate)/chunksize),
                                         maxlen=int((buffer_size*rate)/chunksize))
         self.p = pyaudio.PyAudio()
+        self.rms = 1
         self.stream = None
         self.recording_devices = self.__load_recording_devices()
 
@@ -30,6 +38,7 @@ class AudioRecorder:
 
     def __recording_callback(self, input_data, frame_count, time_info, flags):
         frame = np.frombuffer(input_data, dtype=np.int16)
+        self.rms = audioop.rms(input_data, 2) / 32767
         self.frames.append(frame)
         return input_data, pyaudio.paContinue
 
@@ -59,3 +68,104 @@ class AudioRecorder:
 
     def terminate(self):
         self.p.terminate()
+
+
+class Trigger(AudioRecorder):
+    def __init__(self,
+                 rec_destination: str,
+                 dba_calib_file: Optional[str] = None,
+                 min_q_score: float = 100,
+                 semitone_bin_size: int = 2,
+                 dba_bin_size: int = 5,
+                 buffer_size: int = 1,
+                 rate: int = 44100,
+                 chunksize: int = 1024):
+        super().__init__(buffer_size, rate, chunksize)
+        self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
+        self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score)
+        self.__rec_destination = rec_destination
+
+    def __load_calib_factors(self, dba_calib_file: str) -> dict:
+        with open(dba_calib_file) as f:
+            corr_factors = json.load(f)
+        return {value[1]: value[2] for value in list(corr_factors.values())}
+
+    def start_trigger(self, input_device_index: int):
+        self.stream = self.p.open(format=pyaudio.paInt16,
+                                  channels=1,
+                                  rate=self.rate,
+                                  input=True,
+                                  input_device_index=input_device_index,
+                                  frames_per_buffer=self.chunksize,
+                                  stream_callback=self.__trigger_callback)
+
+    def __trigger_callback(self, input_data, frame_count, time_info, flags):
+        frame = np.frombuffer(input_data, dtype=np.int16)
+        self.frames.append(frame)
+        if len(self.frames) == self.frames.maxlen:
+            data = self.get_audio_data()
+            fourier, fourier_to_plot, abs_freq, w = fft(data, self.rate)
+            # print(get_dba_level(data, self.rate))
+            self.grid.add_trigger(get_dominant_freq(abs_freq=abs_freq, w=w),
+                                  get_dba_level(data, self.rate, corr_dict=self.calib_factors),
+                                  calc_quality_score(abs_freq=abs_freq))
+        return input_data, pyaudio.paContinue
+
+    def stop_trigger(self):
+        super().stop_stream()
+
+
+class Grid:
+    def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float):
+        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
+        self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
+        self.min_q_score: float = min_q_score
+        self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
+
+    def __calc_freq_lower_bounds(self, semitone_bin_size: int) -> List[float]:
+        # arbitrary start point for semitone calculations
+        lower_bounds = [55.0]
+        while lower_bounds[-1] < 2093:
+            lower_bounds.append(np.power(2, semitone_bin_size / 12) * lower_bounds[-1])
+        return lower_bounds
+
+    def __calc_dba_lower_bounds(self, dba_bin_size: int) -> List[int]:
+        lower_bounds = [45]
+        while lower_bounds[-1] < 110:
+            lower_bounds.append(lower_bounds[-1] + 5)
+        return lower_bounds
+
+    def add_trigger(self, freq: float, dba: float, q_score: float) -> None:
+        # find corresponding freq and db bins
+        freq_bin = np.searchsorted(self.freq_bins_lb, freq)
+        dba_bin = np.searchsorted(self.dba_bins_lb, dba)
+        if freq_bin == 0 or dba_bin == 0:
+            # value is smaller than the lowest bound
+            return
+        if q_score > self.min_q_score:
+            return
+        old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
+        if old_q_score is None:
+            self.grid[dba_bin - 1][freq_bin - 1] = q_score
+        else:
+            if old_q_score > q_score:
+                self.grid[dba_bin - 1][freq_bin - 1] = q_score
+
+    def show_grid(self) -> go.Figure:
+        fig = go.Figure(data=go.Heatmap(
+            z=self.grid,
+            hoverongaps=False
+        ))
+        fig.update_layout(
+            xaxis=dict(
+                tickmode="array",
+                tickvals=list(range(len(self.freq_bins_lb))),
+                ticktext=self.freq_bins_lb
+            ),
+            yaxis=dict(
+                tickmode="array",
+                tickvals=list(range(len(self.dba_bins_lb))),
+                ticktext=self.dba_bins_lb
+            )
+        )
+        return fig

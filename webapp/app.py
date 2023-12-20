@@ -10,20 +10,20 @@ from typing import Tuple
 
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
-from recorder import AudioRecorder
+from recorder import Trigger
 from utility import load_recording_devices, default_plot, get_audio_file_names, get_calibration_file_names
 from processing.fourier import plot_abs_fft, get_dba_level
 
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
-recorder = AudioRecorder(buffer_size=1, rate=44100)
+recorder = Trigger(rec_destination="DUMMY")
 signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
 
 # key is dB(A), value list of 3 entries [#measurements, average uncalibrated db(A), difference]
 this.corr_dict = dict()
 this.uncalibrated_dba = 0
-this.calib_factors = None
+this.is_trigger_active = False
 
 app = Dash(
     __name__,
@@ -201,10 +201,13 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
     freq_fig, note, score = plot_abs_fft(data, recorder.rate)
-    if this.calib_factors is not None:
-        dba = get_dba_level(data, recorder.rate, this.calib_factors)
-        return signal_fig, freq_fig, default_plot, f"{note} [{score:.2f}] [{dba:.2f}dB(A)]"
-    return signal_fig, freq_fig, default_plot, f"{note} [{score:.2f}]"
+    heatmap = default_plot
+    if this.is_trigger_active:
+        heatmap = recorder.grid.show_grid()
+    if recorder.calib_factors is not None:
+        dba = get_dba_level(data, recorder.rate, recorder.calib_factors)
+        return signal_fig, freq_fig, heatmap, f"{note} [{score:.2f}] [{dba:.2f}dB(A)]"
+    return signal_fig, freq_fig, heatmap, f"{note} [{score:.2f}]"
 
 
 @callback(
@@ -342,13 +345,13 @@ def update_file_selection(mic_select_value: int, file_select_value: str) -> Tupl
 )
 def on_calib_selection(calib_file_value: str):
     if calib_file_value == "" or calib_file_value is None:
-        this.calib_factors = None
+        recorder.calib_factors = None
         return ""
     with open(calib_file_value) as f:
         corr_factors = json.load(f)
     # only support correction factors recorded by this application {db(A)-value: [#measurements, uncalib dB(A), diff]}
     # transform loaded json into format needed for dB(A) calibration {uncalib dB(A): diff}
-    this.calib_factors = {value[1]: value[2] for value in list(corr_factors.values())}
+    recorder.calib_factors = {value[1]: value[2] for value in list(corr_factors.values())}
     return "Kalibrierungsfaktoren geladen"
 
 
@@ -445,6 +448,7 @@ def on_calibration_save_pressed(n_clicks: int, filename: str) -> Tuple[bool, str
     [
         Output("start-button", "disabled", allow_duplicate=True),
         Output("stop-button", "disabled", allow_duplicate=True),
+        Output("trigger-button", "disabled", allow_duplicate=True),
         Output("interval-component", "disabled", allow_duplicate=True)
     ],
     Input("start-button", "n_clicks"),
@@ -452,7 +456,7 @@ def on_calibration_save_pressed(n_clicks: int, filename: str) -> Tuple[bool, str
     State("menu", "value"),
     prevent_initial_call=True
 )
-def start_recording(n_clicks: int, mic_value: int, calib_value: str) -> Tuple[bool, bool, bool]:
+def start_recording(n_clicks: int, mic_value: int, calib_value: str) -> Tuple[bool, bool, bool, bool]:
     """Callback handling starting of audio input stream depending on currently opened panel and recoder status.
     Will enable or disable interval component as well as play, stop and trigger button depending on recoder status.
 
@@ -463,25 +467,27 @@ def start_recording(n_clicks: int, mic_value: int, calib_value: str) -> Tuple[bo
     """
     print("Try start recording")
     print(mic_value)
-    if calib_value == "calibration":
-        return False, True, True
     if mic_value == -1:
         print("No device selected")
-        return False, True, True
+        return False, True, True, True
+    if calib_value == "calibration":
+        return False, True, True, True
     recorder.start_stream(input_device_index=mic_value)
-    return True, False, False
+    return True, False, False, False
 
 
 @callback(
     [
         Output("start-button", "disabled", allow_duplicate=True),
         Output("stop-button", "disabled", allow_duplicate=True),
+        Output("trigger-button", "disabled", allow_duplicate=True),
+        Output("trigger-button", "children", allow_duplicate=True),
         Output("interval-component", "disabled", allow_duplicate=True)
     ],
     Input("stop-button", "n_clicks"),
     prevent_initial_call=True
 )
-def stop_recording(n_clicks: int) -> Tuple[bool, bool, bool]:
+def stop_recording(n_clicks: int) -> Tuple[bool, bool, bool, str, bool]:
     """Callback handling stopping of audio input stream.
     Will enable or disable interval component as well as play and stop button.
 
@@ -489,8 +495,26 @@ def stop_recording(n_clicks: int) -> Tuple[bool, bool, bool]:
     :return:
     """
     print("stop recording")
+    this.is_trigger_active = False
     recorder.stop_stream()
-    return False, True, True
+    return False, True, True, "Trigger", True
+
+
+@callback(
+    [
+        Output("start-button", "disabled", allow_duplicate=True),
+        Output("stop-button", "disabled", allow_duplicate=True),
+        Output("trigger-button", "children", allow_duplicate=True)
+    ],
+    Input("trigger-button", "n_clicks"),
+    State("microphone-select", "value"),
+    prevent_initial_call=True
+)
+def start_trigger(n_clicks: int, mic_value: int):
+    recorder.stop_stream()
+    recorder.start_trigger(input_device_index=mic_value)
+    this.is_trigger_active = True
+    return True, False, dmc.Loader(color="white", size="sm", variant="bars")
 
 
 if __name__ == "__main__":
