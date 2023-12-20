@@ -102,22 +102,26 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     return abs(scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:])))
 
 
-def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None):
+def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None) -> float:
+    """
+
+    :param data: Numpy array of the recorded audio data.
+    :param rate: Sampling rate of the recorder.
+    :param corr_dict: Dictionary containing db(A) value as keys and a list of corresponding
+                      microphone value and correction factor as values
+    :return:
+    """
     weighted_signal = A_weight(data, fs=rate)
     rms_value = np.sqrt(np.mean(np.abs(weighted_signal) ** 2))
     result = 20 * np.log10(rms_value)
     if corr_dict is None:
         return result
     xp, corr_interp = interp_correction(corr_dict)
-    print(corr_interp)
-    print(xp)
-    print(result)
     idx = bisection(xp, result)
     if idx == -1:
         idx = 0
     else:
         idx -= 1
-    print(idx)
     return result + corr_interp[idx]
 
 
