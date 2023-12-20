@@ -1,11 +1,11 @@
 import json
+import time
 from typing import List, Optional
 
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
-import audioop
 import plotly.graph_objs as go
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
@@ -21,7 +21,6 @@ class AudioRecorder:
         self.frames = collections.deque([] * int((buffer_size*rate)/chunksize),
                                         maxlen=int((buffer_size*rate)/chunksize))
         self.p = pyaudio.PyAudio()
-        self.rms = 1
         self.stream = None
         self.recording_devices = self.__load_recording_devices()
 
@@ -38,7 +37,6 @@ class AudioRecorder:
 
     def __recording_callback(self, input_data, frame_count, time_info, flags):
         frame = np.frombuffer(input_data, dtype=np.int16)
-        self.rms = audioop.rms(input_data, 2) / 32767
         self.frames.append(frame)
         return input_data, pyaudio.paContinue
 
@@ -91,6 +89,7 @@ class Trigger(AudioRecorder):
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
     def start_trigger(self, input_device_index: int):
+        print("start")
         self.stream = self.p.open(format=pyaudio.paInt16,
                                   channels=1,
                                   rate=self.rate,
@@ -117,6 +116,7 @@ class Trigger(AudioRecorder):
 
 class Grid:
     def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float):
+        self.__last_trigger_time = -1
         self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
         self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
         self.min_q_score: float = min_q_score
@@ -135,7 +135,13 @@ class Grid:
             lower_bounds.append(lower_bounds[-1] + 5)
         return lower_bounds
 
-    def add_trigger(self, freq: float, dba: float, q_score: float) -> None:
+    def add_trigger(self, freq: float, dba: float, q_score: float, timeout: float = 1) -> None:
+        if self.__last_trigger_time == -1:
+            self.__last_trigger_time = time.time()
+            return
+        if self.__last_trigger_time + timeout > time.time():
+            return
+        self.__last_trigger_time = time.time()
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
@@ -147,9 +153,11 @@ class Grid:
         old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
+            print(f"new entry for {self.freq_bins_lb[freq_bin - 1]} Q: {q_score}")
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
+                print(f"updated entry for {self.freq_bins_lb[freq_bin - 1]} old Q: {old_q_score} -> new Q: {q_score}")
 
     def show_grid(self) -> go.Figure:
         fig = go.Figure(data=go.Heatmap(
@@ -169,3 +177,8 @@ class Grid:
             )
         )
         return fig
+
+
+if __name__ == "__main__":
+    trigger = Trigger("TEST")
+    trigger.start_trigger(input_device_index=1)
