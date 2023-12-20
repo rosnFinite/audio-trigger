@@ -1,12 +1,12 @@
 import json
+import os
 import time
-from typing import List, Optional
-
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
 import plotly.graph_objs as go
+from typing import List, Optional
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
@@ -18,8 +18,8 @@ class AudioRecorder:
         # "RATE" is the "sampling rate", i.e. the number of frames per second
         self.rate = rate
         self.buffer_size = buffer_size
-        self.frames = collections.deque([] * int((buffer_size*rate)/chunksize),
-                                        maxlen=int((buffer_size*rate)/chunksize))
+        self.frames = collections.deque([] * int((buffer_size * rate) / chunksize),
+                                        maxlen=int((buffer_size * rate) / chunksize))
         self.p = pyaudio.PyAudio()
         self.stream = None
         self.recording_devices = self.__load_recording_devices()
@@ -70,7 +70,7 @@ class AudioRecorder:
 
 class Trigger(AudioRecorder):
     def __init__(self,
-                 rec_destination: str,
+                 rec_destination: str = time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
                  dba_calib_file: Optional[str] = None,
                  min_q_score: float = 100,
                  semitone_bin_size: int = 2,
@@ -81,7 +81,15 @@ class Trigger(AudioRecorder):
         super().__init__(buffer_size, rate, chunksize)
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
         self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score)
-        self.__rec_destination = rec_destination
+        self.__rec_destination = f"trigger/{rec_destination}"
+        # check if trigger destination folder exists, else create
+        self.__check_rec_destination()
+
+    def __check_rec_destination(self):
+        if os.path.exists(self.__rec_destination):
+            print("exists")
+            return
+        os.makedirs(self.__rec_destination)
 
     def __load_calib_factors(self, dba_calib_file: str) -> dict:
         with open(dba_calib_file) as f:
@@ -105,9 +113,11 @@ class Trigger(AudioRecorder):
             data = self.get_audio_data()
             fourier, fourier_to_plot, abs_freq, w = fft(data, self.rate)
             # print(get_dba_level(data, self.rate))
-            self.grid.add_trigger(get_dominant_freq(abs_freq=abs_freq, w=w),
-                                  get_dba_level(data, self.rate, corr_dict=self.calib_factors),
-                                  calc_quality_score(abs_freq=abs_freq))
+            filename = self.grid.add_trigger(get_dominant_freq(abs_freq=abs_freq, w=w),
+                                             get_dba_level(data, self.rate, corr_dict=self.calib_factors),
+                                             calc_quality_score(abs_freq=abs_freq))
+            if filename is not None:
+                wav.write(f"{self.__rec_destination}/{filename}", self.rate, data)
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self):
@@ -135,21 +145,21 @@ class Grid:
             lower_bounds.append(lower_bounds[-1] + 5)
         return lower_bounds
 
-    def add_trigger(self, freq: float, dba: float, q_score: float, timeout: float = 1) -> None:
+    def add_trigger(self, freq: float, dba: float, q_score: float, timeout: float = 1) -> Optional[str]:
         if self.__last_trigger_time == -1:
             self.__last_trigger_time = time.time()
-            return
+            return None
         if self.__last_trigger_time + timeout > time.time():
-            return
+            return None
         self.__last_trigger_time = time.time()
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
         if freq_bin == 0 or dba_bin == 0:
             # value is smaller than the lowest bound
-            return
+            return None
         if q_score > self.min_q_score:
-            return
+            return None
         old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
@@ -158,6 +168,11 @@ class Grid:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 print(f"updated entry for {self.freq_bins_lb[freq_bin - 1]} old Q: {old_q_score} -> new Q: {q_score}")
+        # return filename for added trigger point
+        return self.__build_file_name(freq_bin-1, dba_bin-1)
+
+    def __build_file_name(self, freq_bin: int, dba_bin: int):
+        return f"freqLB_{freq_bin}_dbaLB_{dba_bin}.wav"
 
     def show_grid(self) -> go.Figure:
         fig = go.Figure(data=go.Heatmap(
