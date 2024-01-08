@@ -75,7 +75,7 @@ class Trigger(AudioRecorder):
                  min_q_score: float = 100,
                  semitone_bin_size: int = 2,
                  dba_bin_size: int = 5,
-                 buffer_size: int = 1,
+                 buffer_size: float = 1,
                  rate: int = 44100,
                  chunksize: int = 1024):
         super().__init__(buffer_size, rate, chunksize)

@@ -17,7 +17,7 @@ from processing.fourier import plot_abs_fft, get_dba_level
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
-recorder = Trigger(rec_destination="DUMMY")
+recorder = Trigger(buffer_size=0.2, rec_destination="DUMMY")
 signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
 
 # key is dB(A), value list of 3 entries [#measurements, average uncalibrated db(A), difference]
