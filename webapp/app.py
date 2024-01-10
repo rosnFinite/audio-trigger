@@ -141,7 +141,7 @@ app.layout = dmc.MantineProvider(
         dcc.Interval(
             id='interval-component',
             disabled=True,
-            interval=200,  # in milliseconds
+            interval=100,  # in milliseconds
             n_intervals=0
         ),
     ],

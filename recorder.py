@@ -6,7 +6,7 @@ import numpy as np
 import scipy.io.wavfile as wav
 import collections
 import plotly.graph_objs as go
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
@@ -72,7 +72,7 @@ class Trigger(AudioRecorder):
     def __init__(self,
                  rec_destination: str = time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
                  dba_calib_file: Optional[str] = None,
-                 min_q_score: float = 100,
+                 min_q_score: float = 50,
                  semitone_bin_size: int = 2,
                  dba_bin_size: int = 5,
                  buffer_size: float = 1,
@@ -97,7 +97,6 @@ class Trigger(AudioRecorder):
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
     def start_trigger(self, input_device_index: int):
-        print("start")
         self.stream = self.p.open(format=pyaudio.paInt16,
                                   channels=1,
                                   rate=self.rate,
@@ -107,6 +106,7 @@ class Trigger(AudioRecorder):
                                   stream_callback=self.__trigger_callback)
 
     def __trigger_callback(self, input_data, frame_count, time_info, flags):
+        #start_t = time.time()
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
         if len(self.frames) == self.frames.maxlen:
@@ -118,6 +118,7 @@ class Trigger(AudioRecorder):
                                              calc_quality_score(abs_freq=abs_freq))
             if filename is not None:
                 wav.write(f"{self.__rec_destination}/{filename}", self.rate, data)
+        #print(time.time() - start_t)
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self):
@@ -126,7 +127,7 @@ class Trigger(AudioRecorder):
 
 class Grid:
     def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float):
-        self.__last_trigger_time = -1
+        self.__last_data_tuple: Optional[Tuple[int, int]] = None
         self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
         self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
         self.min_q_score: float = min_q_score
@@ -145,21 +146,17 @@ class Grid:
             lower_bounds.append(lower_bounds[-1] + 5)
         return lower_bounds
 
-    def add_trigger(self, freq: float, dba: float, q_score: float, timeout: float = 1) -> Optional[str]:
-        if self.__last_trigger_time == -1:
-            self.__last_trigger_time = time.time()
-            return None
-        if self.__last_trigger_time + timeout > time.time():
-            return None
-        self.__last_trigger_time = time.time()
+    def add_trigger(self, freq: float, dba: float, q_score: float) -> Optional[str]:
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
         if freq_bin == 0 or dba_bin == 0:
             # value is smaller than the lowest bound
             return None
+        self.__last_data_tuple = (freq_bin, dba_bin)
         if q_score > self.min_q_score:
             return None
+        print(q_score)
         old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
@@ -179,11 +176,16 @@ class Grid:
             z=self.grid,
             hoverongaps=False
         ))
+        if self.__last_data_tuple is not None:
+            freq, dba = self.__last_data_tuple
+            fig.add_trace(
+                go.Scatter(x=[freq-1], y=[dba-1])
+            )
         fig.update_layout(
             xaxis=dict(
                 tickmode="array",
                 tickvals=list(range(len(self.freq_bins_lb))),
-                ticktext=self.freq_bins_lb
+                ticktext=["%.2f" % freq_bin for freq_bin in self.freq_bins_lb]
             ),
             yaxis=dict(
                 tickmode="array",
