@@ -12,9 +12,11 @@ from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get
 
 
 class AudioRecorder:
-    def __init__(self, buffer_size=10, rate=16000, chunksize=1024):
+    def __init__(self, buffer_size=10, rate=16000, channels=2, chunksize=1024):
         # "CHUNK" is the (arbitrarily chosen) number of frames the (potentially very long)
         self.chunksize = chunksize
+        # channels == 1, only audio input | channels == 2, audio and egg input
+        self.channels = channels
         # "RATE" is the "sampling rate", i.e. the number of frames per second
         self.rate = rate
         self.buffer_size = buffer_size
@@ -23,9 +25,18 @@ class AudioRecorder:
         self.p = pyaudio.PyAudio()
         self.stream = None
         self.recording_devices = self.__load_recording_devices()
+        self.recording_device = None
 
     def get_audio_data(self):
-        return np.hstack(self.frames)
+        if self.channels == 1:
+            return np.hstack(self.frames)
+        return np.hstack(self.frames)[0::2]
+
+    def get_egg_data(self):
+        if self.channels != 2:
+            return None
+        return np.hstack(self.frames)[1::2]
+
 
     def __load_recording_devices(self):
         info = self.p.get_host_api_info_by_index(0)
@@ -41,8 +52,9 @@ class AudioRecorder:
         return input_data, pyaudio.paContinue
 
     def start_stream(self, input_device_index):
+        self.recording_device = input_device_index
         self.stream = self.p.open(format=pyaudio.paInt16,
-                                  channels=1,
+                                  channels=self.channels,
                                   rate=self.rate,
                                   input=True,
                                   input_device_index=input_device_index,
@@ -56,6 +68,7 @@ class AudioRecorder:
             raise RuntimeError("Stream has not been created.")
         if self.stream is not None and not self.stream.is_active():
             raise RuntimeError("Stream is currently not active.")
+        self.recording_device = None
         self.stream.close()
         print("Stream stopped.")
 
@@ -75,19 +88,19 @@ class Trigger(AudioRecorder):
                  min_q_score: float = 50,
                  semitone_bin_size: int = 2,
                  dba_bin_size: int = 5,
-                 buffer_size: float = 1,
+                 buffer_size: float = 1.0,
+                 channels: int = 1,
                  rate: int = 44100,
                  chunksize: int = 1024):
-        super().__init__(buffer_size, rate, chunksize)
+        super().__init__(buffer_size, rate, channels, chunksize)
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
         self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score)
-        self.__rec_destination = f"trigger/{rec_destination}"
+        self.__rec_destination = f"{os.path.dirname(os.path.abspath(__file__))}/{rec_destination}"
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
 
     def __check_rec_destination(self):
         if os.path.exists(self.__rec_destination):
-            print("exists")
             return
         os.makedirs(self.__rec_destination)
 
@@ -97,8 +110,9 @@ class Trigger(AudioRecorder):
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
     def start_trigger(self, input_device_index: int):
+        self.recording_device = input_device_index
         self.stream = self.p.open(format=pyaudio.paInt16,
-                                  channels=1,
+                                  channels=self.channels,
                                   rate=self.rate,
                                   input=True,
                                   input_device_index=input_device_index,
@@ -106,7 +120,7 @@ class Trigger(AudioRecorder):
                                   stream_callback=self.__trigger_callback)
 
     def __trigger_callback(self, input_data, frame_count, time_info, flags):
-        #start_t = time.time()
+        #TODO: Check if emptying frames will lead to better results -> less overlap between trigger
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
         if len(self.frames) == self.frames.maxlen:
@@ -118,7 +132,6 @@ class Trigger(AudioRecorder):
                                              calc_quality_score(abs_freq=abs_freq))
             if filename is not None:
                 wav.write(f"{self.__rec_destination}/{filename}", self.rate, data)
-        #print(time.time() - start_t)
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self):
