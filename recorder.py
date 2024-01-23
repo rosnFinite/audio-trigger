@@ -53,7 +53,6 @@ class AudioRecorder:
 
     def start_stream(self, input_device_index):
         self.recording_device = input_device_index
-        print(self.channels)
         self.stream = self.p.open(format=pyaudio.paInt16,
                                   channels=self.channels,
                                   rate=self.rate,
@@ -211,5 +210,5 @@ class Grid:
 
 
 if __name__ == "__main__":
-    trigger = AudioRecorder()
-    trigger.start_stream(input_device_index=2)
+    trigger = Trigger("TEST")
+    trigger.start_trigger(input_device_index=1)

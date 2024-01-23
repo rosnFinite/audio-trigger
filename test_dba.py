@@ -5,7 +5,7 @@ import numpy as np
 import scipy
 
 from webapp.processing.weighting import A_weight
-from utility.utility import bisection
+from webapp.utility import bisection
 from recorder import AudioRecorder
 
 recorder = AudioRecorder(buffer_size=1, rate=44100)

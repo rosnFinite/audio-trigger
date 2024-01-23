@@ -8,6 +8,9 @@ from dash import Dash, dcc, State, Input, Output, callback
 from dash_iconify import DashIconify
 from typing import Tuple
 
+# solution for path problems using vscode
+sys.path.append("D:\\rosef\\audio-trigger")
+
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
 from recorder import Trigger
