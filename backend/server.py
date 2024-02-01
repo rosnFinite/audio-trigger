@@ -70,7 +70,7 @@ def connected():
 @socketio.on('data')
 def handle_message(data):
     """event listener when client types a message"""
-    print("data from the front end: ", str(data))
+    print("data: ", str(data))
     emit("data", {'data': data, 'id': request.sid}, broadcast=True)
 
 
