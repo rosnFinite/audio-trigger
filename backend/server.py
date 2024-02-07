@@ -43,6 +43,12 @@ def handle_grid_update(data):
     print(f"Received grid update: {data}")
 
 
+@server.on("voice-update")
+def handle_voice_update(data):
+    """event listener when audio information update"""
+    print(f"Received audio update: {data}")
+
+
 @server.on("disconnect")
 def disconnected():
     """event listener when client disconnects to the server"""
