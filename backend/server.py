@@ -52,7 +52,7 @@ def handle_voice_update(data):
 @server.on("disconnect")
 def disconnected():
     """event listener when client disconnects to the server"""
-    print("user disconnected")
+    print("client disconnected")
     emit("disconnect", f"user {request.sid} disconnected", broadcast=True)
 
 
