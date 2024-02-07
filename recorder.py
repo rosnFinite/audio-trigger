@@ -193,6 +193,7 @@ class Grid:
         self.__last_data_tuple: Optional[Tuple[int, int]] = None
         self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
         self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
+        logging.info(f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
         self.min_q_score: float = min_q_score
         self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
         self.socket = socket
