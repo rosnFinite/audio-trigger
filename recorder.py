@@ -16,7 +16,11 @@ from typing import List, Optional, Tuple
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    level=logging.DEBUG,
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 
 class AudioRecorder:
@@ -118,22 +122,25 @@ class Trigger(AudioRecorder):
                  channels: int = 1,
                  rate: int = 44100,
                  chunksize: int = 1024,
-                 socket_event: str = None):
+                 socket=None):
         super().__init__(buffer_size, rate, channels, chunksize)
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
-        self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score)
+        self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score, socket)
         self.__rec_destination = f"{os.path.dirname(os.path.abspath(__file__))}/{rec_destination}"
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
         # create a websocket connection
-        self.socket_event = socket_event
-        self.socket = None
-        if socket_event is not None:
-            logging.info("Connecting to websocket server...")
-            self.socket = socketio.Client()
-            # per default connect to local server
-            self.socket.connect("http://localhost:5001")
-            logging.info("Websocket connected successfully.")
+        self.socket = socket
+        if self.socket is not None:
+            if self.socket.connected:
+                logging.info("Websocket connected to trigger.")
+            else:
+                logging.info("Websocket without connection to server provided. Try to connect to default url...")
+                try:
+                    self.socket.connect("http://localhost:5001")
+                    logging.info("Websocket connection to default server successfully established.")
+                except Exception:
+                    logging.info("Websocket connection to default server failed.")
 
     def __check_rec_destination(self):
         if os.path.exists(self.__rec_destination):
@@ -167,9 +174,6 @@ class Trigger(AudioRecorder):
             dom_freq = get_dominant_freq(data, abs_freq=abs_freq, rate=self.rate, w=w)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
             q_score = calc_quality_score(abs_freq=abs_freq)
-            json_data = {"dom_freq": dom_freq, "dba_level": dba_level, "q_score": q_score}
-            logging.info(f"Audio data: {json_data}")
-            self.socket.emit(self.socket_event, json_data)
             filename = self.grid.add_trigger(dom_freq, dba_level, q_score)
             if filename is not None:
                 wav.write(f"{self.__rec_destination}/{filename}", self.rate, data)
@@ -185,12 +189,13 @@ class Trigger(AudioRecorder):
 
 
 class Grid:
-    def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float):
+    def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float, socket=None):
         self.__last_data_tuple: Optional[Tuple[int, int]] = None
         self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
         self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
         self.min_q_score: float = min_q_score
         self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
+        self.socket = socket
 
     def __calc_freq_lower_bounds(self, semitone_bin_size: int) -> List[float]:
         # arbitrary start point for semitone calculations
@@ -205,6 +210,9 @@ class Grid:
             lower_bounds.append(lower_bounds[-1] + 5)
         return lower_bounds
 
+    def __create_socket_payload(self):
+        return {str(idx): freqs for idx, freqs in enumerate(self.grid)}
+
     def add_trigger(self, freq: float, dba: float, q_score: float) -> Optional[str]:
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
@@ -212,17 +220,28 @@ class Grid:
         if freq_bin == 0 or dba_bin == 0:
             # value is smaller than the lowest bound
             return None
+        if self.socket is not None:
+            logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
+            self.socket.emit("voice-update", {
+                "freq_bin": int(freq_bin),
+                "dba_bin": int(dba_bin),
+                "freq": float(freq),
+                "dba": float(dba),
+                "q_score": float(q_score)
+            })
         self.__last_data_tuple = (freq_bin, dba_bin)
         if q_score > self.min_q_score:
             return None
         old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
-            # print(f"new entry for {self.freq_bins_lb[freq_bin - 1]} Q: {q_score}")
+            logging.info(f"+ Grid entry added - q_score: {q_score}")
+            self.socket.emit("grid-update", self.__create_socket_payload())
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
-                # print(f"updated entry for {self.freq_bins_lb[freq_bin - 1]} old Q: {old_q_score} -> new Q: {q_score}")
+                logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
+                self.socket.emit("grid-update", self.__create_socket_payload())
         # return filename for added trigger point
         return self.__build_file_name(freq_bin - 1, dba_bin - 1)
 
