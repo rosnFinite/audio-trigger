@@ -41,19 +41,20 @@ def connected():
 def handle_grid_update(data):
     """event listener when grid updates"""
     print(f"Received grid update: {data}")
+    emit("grid-update", data, broadcast=True)
 
 
 @server.on("voice-update")
 def handle_voice_update(data):
     """event listener when audio information update"""
     print(f"Received audio update: {data}")
+    emit("voice-update", data, broadcast=True)
 
 
 @server.on("disconnect")
 def disconnected():
     """event listener when client disconnects to the server"""
     print("client disconnected")
-    emit("disconnect", f"user {request.sid} disconnected", broadcast=True)
 
 
 if __name__ == '__main__':
