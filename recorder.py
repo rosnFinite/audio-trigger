@@ -87,6 +87,7 @@ class AudioRecorder:
         self.stream_thread_is_running = True
         self.stream_thread = Thread(target=self.stream_process, args=(input_device_index, self.__recording_callback))
         self.stream_thread.start()
+        logging.info("Audio stream started successfully.")
 
     def stop_stream(self):
         if not self.stream_thread_is_running:
@@ -135,7 +136,8 @@ class Trigger(AudioRecorder):
             if self.socket.connected:
                 logging.info("Websocket connected to trigger.")
             else:
-                logging.info("Websocket without connection to server provided. Try to connect to default url...")
+                logging.info("SocketIO client without connection to server provided. Try to connect to default url "
+                             "'http://localhost:5001'...")
                 try:
                     self.socket.connect("http://localhost:5001")
                     logging.info("Websocket connection to default server successfully established.")
@@ -163,6 +165,7 @@ class Trigger(AudioRecorder):
         self.stream_thread_is_running = True
         self.stream_thread = Thread(target=self.stream_process, args=(input_device_index, self.__trigger_callback))
         self.stream_thread.start()
+        logging.info("Audio stream started successfully.")
 
     def __trigger_callback(self, input_data, frame_count, time_info, flags):
         # TODO: Check if emptying frames will lead to better results -> less overlap between trigger
@@ -237,12 +240,14 @@ class Grid:
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
             logging.info(f"+ Grid entry added - q_score: {q_score}")
-            self.socket.emit("grid-update", self.__create_socket_payload())
+            if self.socket is not None:
+                self.socket.emit("grid-update", self.__create_socket_payload())
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
-                self.socket.emit("grid-update", self.__create_socket_payload())
+                if self.socket is not None:
+                    self.socket.emit("grid-update", self.__create_socket_payload())
         # return filename for added trigger point
         return self.__build_file_name(freq_bin - 1, dba_bin - 1)
 
