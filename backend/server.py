@@ -4,6 +4,8 @@ from flask import Flask, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
 
+from recorder import AudioRecorder
+
 UPLOAD_FOLDER = "./tmp"
 ALLOWED_EXTENSIONS = {"json"}
 
@@ -14,9 +16,25 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 server = SocketIO(app, cors_allowed_origins="*")
 
 
+
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
+@app.route("/devices")
+def get_devices():
+    """return all available recording devices"""
+    device_list = []
+    for idx, device in enumerate(AudioRecorder().recording_devices):
+        device_list.append({"id": str(idx),"name": device})
+    return {"devices": device_list}
+
+@app.post("/settings")
+def post_settings():
+    """handling post request for setting the recording device"""
+    data = request.get_json()
+    print(data)
+    return "Setting successfully received", 200
 
 @app.post("/upload-calib")
 def upload_calib():
@@ -37,18 +55,18 @@ def connected():
     print(f"client has connected: {request.sid}")
 
 
-@server.on('grid-update')
+@server.on('trigger')
 def handle_grid_update(data):
     """event listener when grid updates"""
-    print(f"Received grid update: {data}")
-    emit("grid-update", data, broadcast=True)
+    print(f"Received trigger: {data}")
+    emit("trigger", data, broadcast=True)
 
 
-@server.on("voice-update")
+@server.on("voice")
 def handle_voice_update(data):
     """event listener when audio information update"""
     print(f"Received audio update: {data}")
-    emit("voice-update", data, broadcast=True)
+    emit("voice", data, broadcast=True)
 
 
 @server.on("disconnect")

@@ -226,12 +226,12 @@ class Grid:
             return None
         if self.socket is not None:
             logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
-            self.socket.emit("voice-update", {
-                "freq_bin": int(freq_bin),
-                "dba_bin": int(dba_bin),
+            self.socket.emit("voice", {
+                "freq_bin": int(freq_bin-1),
+                "dba_bin": int(dba_bin-1),
                 "freq": float(freq),
                 "dba": float(dba),
-                "q_score": float(q_score)
+                "score": float(q_score)
             })
         self.__last_data_tuple = (freq_bin, dba_bin)
         if q_score > self.min_q_score:
@@ -241,13 +241,13 @@ class Grid:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
             logging.info(f"+ Grid entry added - q_score: {q_score}")
             if self.socket is not None:
-                self.socket.emit("grid-update", self.__create_socket_payload())
+                self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
                 if self.socket is not None:
-                    self.socket.emit("grid-update", self.__create_socket_payload())
+                    self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         # return filename for added trigger point
         return self.__build_file_name(freq_bin - 1, dba_bin - 1)
 
