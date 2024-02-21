@@ -37,7 +37,11 @@ def get_dominant_note(data: Optional[np.ndarray] = None,
     :return:
     """
     freq = get_dominant_freq(data, rate, abs_freq, w)
-    note = librosa.hz_to_note(freq)
+    try:
+        note = librosa.hz_to_note(freq)
+    except OverflowError:
+        #TODO excetion if freq == 0
+        return None
     return note
 
 
