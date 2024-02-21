@@ -7,6 +7,7 @@ from threading import Thread
 import socketio
 import logging
 
+import nidaqmx
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
@@ -143,6 +144,13 @@ class Trigger(AudioRecorder):
                     logging.info("Websocket connection to default server successfully established.")
                 except Exception:
                     logging.info("Websocket connection to default server failed.")
+        # check for ni daq board
+        self.daq = None
+        if len(nidaqmx.system.System.local().devices) == 0:
+            logging.info("No connected DAQ-Board found. Continue without...")
+        else:
+            logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
+            self.daq = nidaqmx.system.System.local().devices[0]
 
     def __check_rec_destination(self):
         if os.path.exists(self.__rec_destination):
@@ -190,6 +198,14 @@ class Trigger(AudioRecorder):
             logging.info("Websocket connection closed successfully.")
         logging.info("Trigger stopped successfully.")
 
+    def daq_trigger(self):
+        if self.daq is None:
+            return
+        with nidaqmx.Task(new_task_name="TriggerTask") as trig_task:
+            trig_task.ao_channels.add_ao_voltage_chan(f"{self.daq}/ao0", min_val=-10, max_val=10)
+            trig_task.write(10.0)
+            trig_task.stop()
+
 
 class Grid:
     def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float, socket=None):
@@ -211,7 +227,7 @@ class Grid:
     def __calc_dba_lower_bounds(self, dba_bin_size: int) -> List[int]:
         lower_bounds = [45]
         while lower_bounds[-1] < 110:
-            lower_bounds.append(lower_bounds[-1] + 5)
+            lower_bounds.append(lower_bounds[-1] + dba_bin_size)
         return lower_bounds
 
     def __create_socket_payload(self):
@@ -221,6 +237,7 @@ class Grid:
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
+        logging.info(f"{freq_bin},{dba_bin}")
         if freq_bin == 0 or dba_bin == 0:
             # value is smaller than the lowest bound
             return None
@@ -240,12 +257,14 @@ class Grid:
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
             logging.info(f"+ Grid entry added - q_score: {q_score}")
+            self.daq_trigger()
             if self.socket is not None:
                 self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
+                self.daq_trigger()
                 if self.socket is not None:
                     self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         # return filename for added trigger point
@@ -280,5 +299,6 @@ class Grid:
 
 
 if __name__ == "__main__":
-    trigger = AudioRecorder(channels=1)
-    trigger.start_stream(input_device_index=1)
+    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="./calibration/Behringer.json")
+    trigger.start_trigger(1)
+
