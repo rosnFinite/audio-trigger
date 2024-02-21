@@ -113,10 +113,21 @@ dependencies:
   - zlib=1.2.13=hcfcfb64_5
   - zstd=1.5.2=h19a0ad4_0
   - pip:
+      - bidict==0.22.1
       - dash-iconify==0.1.2
       - dash-mantine-components==0.12.1
+      - deprecation==2.1.0
+      - flask-cors==4.0.0
+      - flask-socketio==5.3.6
       - frozendict==2.4.0
+      - h11==0.14.0
+      - hightime==0.2.1
       - importlib-metadata==7.0.1
+      - nidaqmx==0.9.0
       - pyaudio==0.2.14
+      - python-engineio==4.8.2
+      - python-socketio==5.11.0
+      - simple-websocket==1.0.0
+      - wsproto==1.2.0
       - zipp==3.17.0
 prefix: C:\Users\MedInf\miniconda3\envs\audio
