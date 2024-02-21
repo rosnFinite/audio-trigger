@@ -1,7 +1,12 @@
 import os.path
+import sys
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+
+# solution for path problems using vscode
+sys.path.append("D:\\rosef\\audio-trigger")
+
 from recorder import Trigger
 
 UPLOAD_FOLDER = "./tmp"
