@@ -204,7 +204,7 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
     freq_fig, note, score = plot_abs_fft(data, recorder.rate)
-    heatmap = recorder.grid.show_grid()
+    heatmap = recorder.grid.create_heatmap()
     if recorder.calib_factors is not None:
         dba = get_dba_level(data, recorder.rate, recorder.calib_factors)
         return signal_fig, freq_fig, heatmap, f"{note} [{score:.2f}] [{dba:.2f}dB(A)]"
