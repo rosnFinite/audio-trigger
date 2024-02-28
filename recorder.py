@@ -271,7 +271,7 @@ class Trigger(AudioRecorder):
         The websocket connection object.
     """
     def __init__(self,
-                 rec_destination: str = time.strftime("%Y%m%d-%H%M%S", time.gmtime()),
+                 rec_destination: str = f"recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                  dba_calib_file: Optional[str] = None,
                  min_q_score: float = 50,
                  semitone_bin_size: int = 2,
