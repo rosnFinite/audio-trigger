@@ -1,19 +1,18 @@
-import json
+import logging
 import os
-
-import nidaqmx
-import socketio
+import json
 import time
 from threading import Thread, Event
-
-import logging
+from typing import List, Optional, Tuple, Union, Callable
 
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
 import plotly.graph_objs as go
-from typing import List, Optional, Tuple, Union, Callable
+import nidaqmx
+import socketio
+from socketio.exceptions import ConnectionError
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
