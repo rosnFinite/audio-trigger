@@ -1,14 +1,16 @@
 import os.path
 import sys
+import eventlet
 
-from flask import Flask, request
+import socketio
+from eventlet import wsgi
+from flask import Flask, request, make_response
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+from recorder import AudioRecorder
 
 # solution for path problems using vscode
 sys.path.append("D:\\rosef\\audio-trigger")
-
-from recorder import AudioRecorder
 
 UPLOAD_FOLDER = "./tmp"
 ALLOWED_EXTENSIONS = {"json"}
@@ -17,8 +19,10 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 CORS(app, resources={r"/*": {"origins": "*"}})
-server = SocketIO(app, cors_allowed_origins="*")
+server = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
+this = sys.modules[__name__]
+this.trigger = None
 
 
 def allowed_file(filename):
@@ -30,15 +34,9 @@ def get_devices():
     """return all available recording devices"""
     device_list = []
     for idx, device in enumerate(AudioRecorder().recording_devices):
-        device_list.append({"id": str(idx),"name": device})
+        device_list.append({"id": str(idx), "name": device})
     return {"devices": device_list}
 
-@app.post("/settings")
-def post_settings():
-    """handling post request for setting the recording device"""
-    data = request.get_json()
-    print(data)
-    return "Setting successfully received", 200
 
 @app.post("/upload-calib")
 def upload_calib():
@@ -79,7 +77,35 @@ def disconnected():
     print("client disconnected")
 
 
+@server.on("changeSettings")
+def on_settings(req_settings):
+    print("Settings change request received")
+    emit("changeSettings", req_settings, broadcast=True)
+
+
+@server.on("settingsChanged")
+def on_settings_changed(updated_settings):
+    print("Setting change fulfilled")
+    emit("settingsChanged", updated_settings, broadcast=True)
+
+
+@server.on("changeStatus")
+def on_change_status(req_status):
+    print("Status change request received")
+    emit("changeStatus", req_status, broadcast=True)
+
+
+@server.on("statusChanged")
+def on_status_changed(updated_status):
+    print("status change fulfilled")
+    emit("statusChanged", updated_status, broadcast=True)
+
+
+@server.on("startTrigger")
+def on_start_trigger(device_idx):
+    print("trigger process started")
+    emit("startTrigger", device_idx, broadcast=True)
+
+
 if __name__ == '__main__':
-    server.run(app, debug=True, port=5001)
-
-
+    server.run(app, port=5001, debug=True)

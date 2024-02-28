@@ -1,19 +1,20 @@
 import json
 import os
-import threading
-import time
-from threading import Thread
-
-import socketio
-import logging
 
 import nidaqmx
+import socketio
+import time
+from threading import Thread, Event
+from socketio.exceptions import ConnectionError
+
+import logging
+
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
 import plotly.graph_objs as go
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
@@ -41,7 +42,7 @@ class AudioRecorder:
         self.recording_device = None
         self.stream_thread = None
         self.stream_thread_is_running = False
-        self.stop_event = threading.Event()
+        self.stop_event = Event()
 
     def get_audio_data(self):
         if self.channels == 1:
@@ -82,10 +83,12 @@ class AudioRecorder:
     def start_stream(self, input_device_index):
         if self.stream_thread_is_running:
             logging.info("Stream is already running.")
+            return
         logging.info("Starting audio stream thread...")
         self.recording_device = input_device_index
 
         self.stream_thread_is_running = True
+        self.stop_event = Event()
         self.stream_thread = Thread(target=self.stream_process, args=(input_device_index, self.__recording_callback))
         self.stream_thread.start()
         logging.info("Audio stream started successfully.")
@@ -119,7 +122,9 @@ class Trigger(AudioRecorder):
                  dba_calib_file: Optional[str] = None,
                  min_q_score: float = 50,
                  semitone_bin_size: int = 2,
+                 freq_bounds: Tuple[float, float] = (150.0, 1700.0),
                  dba_bin_size: int = 5,
+                 dba_bounds: Tuple[int, int] = (35, 115),
                  buffer_size: float = 1.0,
                  channels: int = 1,
                  rate: int = 44100,
@@ -127,7 +132,6 @@ class Trigger(AudioRecorder):
                  socket=None):
         super().__init__(buffer_size, rate, channels, chunksize)
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
-        self.grid = Grid(semitone_bin_size, dba_bin_size, min_q_score, socket)
         self.__rec_destination = f"{os.path.dirname(os.path.abspath(__file__))}/{rec_destination}"
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
@@ -144,13 +148,28 @@ class Trigger(AudioRecorder):
                     logging.info("Websocket connection to default server successfully established.")
                 except Exception:
                     logging.info("Websocket connection to default server failed.")
+        self.grid = Grid(semitone_bin_size, freq_bounds, dba_bin_size, dba_bounds, min_q_score, self.socket)
+        self.instance_settings = {
+            "sampleRate": rate,
+            "bufferSize": buffer_size,
+            "chunkSize": chunksize,
+            "channels": channels,
+            "qualityScore": min_q_score,
+            "freqBounds": freq_bounds,
+            "semitoneBinSize": semitone_bin_size,
+            "dbaBounds": dba_bounds,
+            "dbaBinSize": dba_bin_size
+        }
+        logging.info(f"Successfully created trigger: {self.instance_settings}")
         # check for ni daq board
+        """
         self.daq = None
         if len(nidaqmx.system.System.local().devices) == 0:
             logging.info("No connected DAQ-Board found. Continue without...")
         else:
             logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
             self.daq = nidaqmx.system.System.local().devices[0]
+        """
 
     def __check_rec_destination(self):
         if os.path.exists(self.__rec_destination):
@@ -167,10 +186,12 @@ class Trigger(AudioRecorder):
     def start_trigger(self, input_device_index: int):
         if self.stream_thread_is_running:
             logging.info("Stream is already running.")
+            return
         logging.info("Starting audio stream thread...")
         self.recording_device = input_device_index
 
         self.stream_thread_is_running = True
+        self.stop_event = Event()
         self.stream_thread = Thread(target=self.stream_process, args=(input_device_index, self.__trigger_callback))
         self.stream_thread.start()
         logging.info("Audio stream started successfully.")
@@ -198,51 +219,68 @@ class Trigger(AudioRecorder):
             logging.info("Websocket connection closed successfully.")
         logging.info("Trigger stopped successfully.")
 
-    def daq_trigger(self):
-        if self.daq is None:
-            return
-        with nidaqmx.Task(new_task_name="TriggerTask") as trig_task:
-            trig_task.ao_channels.add_ao_voltage_chan(f"{self.daq}/ao0", min_val=-10, max_val=10)
-            trig_task.write(10.0)
-            trig_task.stop()
-
 
 class Grid:
-    def __init__(self, semitone_bin_size: int, dba_bin_size: int, min_q_score: float, socket=None):
+    def __init__(self,
+                 semitone_bin_size: int,
+                 freq_bounds: Tuple[float, float],
+                 dba_bin_size: int,
+                 dba_bounds: Tuple[int, int],
+                 min_q_score: float,
+                 socket=None):
         self.__last_data_tuple: Optional[Tuple[int, int]] = None
-        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size)
-        self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size)
+        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
+        self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size, dba_bounds)
         logging.info(f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
         self.min_q_score: float = min_q_score
         self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
         self.socket = socket
 
-    def __calc_freq_lower_bounds(self, semitone_bin_size: int) -> List[float]:
+    def __is_bounds_valid(self, bounds: Union[Tuple[float, float],Tuple[int, int]]):
+        if len(bounds) != 2:
+            return False
+        if bounds[0] == bounds[1]:
+            return False
+        return True
+
+    def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
+        if not self.__is_bounds_valid(freq_bounds):
+
+            logging.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
+                             f"Got {freq_bounds}")
+            raise ValueError("Provided frequency bounds are not valid.")
         # arbitrary start point for semitone calculations
-        lower_bounds = [55.0]
-        while lower_bounds[-1] < 2093:
-            lower_bounds.append(np.power(2, semitone_bin_size / 12) * lower_bounds[-1])
+        lower_bounds = [min(freq_bounds)]
+        while lower_bounds[-1] < max(freq_bounds):
+            lower_bounds.append(round(np.power(2, semitone_bin_size / 12) * lower_bounds[-1], 3))
         return lower_bounds
 
-    def __calc_dba_lower_bounds(self, dba_bin_size: int) -> List[int]:
-        lower_bounds = [45]
-        while lower_bounds[-1] < 110:
+    def __calc_dba_lower_bounds(self, dba_bin_size: int, dba_bounds: Tuple[int, int]) -> List[int]:
+        if not self.__is_bounds_valid(dba_bounds):
+            logging.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
+                             f"Got {dba_bounds}")
+            raise ValueError("Provided db(A) bounds are not valid.")
+        lower_bounds = [min(dba_bounds)]
+        while lower_bounds[-1] < max(dba_bounds):
             lower_bounds.append(lower_bounds[-1] + dba_bin_size)
         return lower_bounds
 
     def __create_socket_payload(self):
         return {str(idx): freqs for idx, freqs in enumerate(self.grid)}
 
+    def reset_grid(self):
+        logging.debug("GRID resetted")
+        self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
+
     def add_trigger(self, freq: float, dba: float, q_score: float) -> Optional[str]:
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
-        logging.info(f"{freq_bin},{dba_bin}")
         if freq_bin == 0 or dba_bin == 0:
             # value is smaller than the lowest bound
             return None
+        logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
         if self.socket is not None:
-            logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
             self.socket.emit("voice", {
                 "freq_bin": int(freq_bin-1),
                 "dba_bin": int(dba_bin-1),
@@ -257,16 +295,10 @@ class Grid:
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
             logging.info(f"+ Grid entry added - q_score: {q_score}")
-            self.daq_trigger()
-            if self.socket is not None:
-                self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
-                self.daq_trigger()
-                if self.socket is not None:
-                    self.socket.emit("trigger", {"x": int(freq_bin - 1), "y": int(dba_bin - 1), "score": float(q_score)})
         # return filename for added trigger point
         return self.__build_file_name(freq_bin - 1, dba_bin - 1)
 
