@@ -12,97 +12,140 @@ from recorder import AudioRecorder
 # solution for path problems using vscode
 sys.path.append("D:\\rosef\\audio-trigger")
 
-UPLOAD_FOLDER = "./tmp"
-ALLOWED_EXTENSIONS = {"json"}
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret!'
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 CORS(app, resources={r"/*": {"origins": "*"}})
 server = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
-
-this = sys.modules[__name__]
-this.trigger = None
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 @app.route("/devices")
 def get_devices():
-    """return all available recording devices"""
+    """Return all available recording devices.
+
+    Returns
+    -------
+    dict
+        A dictionary containing the list of available recording devices. Each device is represented by a dictionary
+        with "id" and "name" keys.
+    """
     device_list = []
     for idx, device in enumerate(AudioRecorder().recording_devices):
         device_list.append({"id": str(idx), "name": device})
     return {"devices": device_list}
 
 
-@app.post("/upload-calib")
-def upload_calib():
-    """handling post request for uploading json calibration files"""
-    if "file" not in request.files:
-        return "Upload unsuccessful", 400
-    file = request.files["file"]
-    if file.filename == "":
-        return "Upload unsuccessful", 400
-    if file and allowed_file(file.filename):
-        file.save(os.path.join(app.config["UPLOAD_FOLDER"], "calibration.json"))
-    return "File successfully uploaded", 200
-
-
 @server.on("connect")
 def connected():
-    """event listener when client connects to the server"""
+    """This function is called when a client connects to the server.
+    It prints the client's session ID.
+    """
     print(f"client has connected: {request.sid}")
 
 
 @server.on('trigger')
-def handle_grid_update(data):
-    """event listener when grid updates"""
+def handle_grid_update(data: dict) -> None:
+    """Handle the trigger event and broadcast the data to all except emitter clients. Emitted to by the audio trigger
+    when a trigger event occurs.
+
+    Parameters
+    ----------
+    data: dict
+        The data received from the trigger event.
+    """
     print(f"Received trigger: {data}")
     emit("trigger", data, broadcast=True)
 
 
 @server.on("voice")
-def handle_voice_update(data):
-    """event listener when audio information update"""
+def handle_voice_update(data: dict) -> None:
+    """Event listener when audio information is updated. Emitted to by the audio trigger.
+
+    Parameters
+    ----------
+    data: dict
+        The updated audio information.
+    """
     print(f"Received audio update: {data}")
     emit("voice", data, broadcast=True)
 
 
 @server.on("disconnect")
 def disconnected():
-    """event listener when client disconnects to the server"""
+    """This function is called when a client disconnects from the server.
+    It prints a message indicating that the client has disconnected.
+    """
     print("client disconnected")
 
 
 @server.on("changeSettings")
-def on_settings(req_settings):
+def on_settings(req_settings: dict) -> None:
+    """Event handler for the "changeSettings" event. Emitted to by the web client when the user wants to change
+    settings.
+
+    Parameters
+    ----------
+    req_settings: dict
+        The requested settings to be changed.
+
+    Returns:
+        None
+    """
     print("Settings change request received")
     emit("changeSettings", req_settings, broadcast=True)
 
 
 @server.on("settingsChanged")
-def on_settings_changed(updated_settings):
+def on_settings_changed(updated_settings: dict) -> None:
+    """Event handler for when settings are changed. Emitted to by the audio trigger when the settings have changed.
+
+    Parameters
+    ----------
+    updated_settings: dict
+        The updated settings.
+    """
     print("Setting change fulfilled")
     emit("settingsChanged", updated_settings, broadcast=True)
 
 
 @server.on("changeStatus")
-def on_change_status(req_status):
+def on_change_status(action: dict) -> None:
+    """Event handler for the "changeStatus" event. Emitted to by the web client when the user requests a status change.
+    Receives an action dictionary containing actions for the recorder and trigger.
+    Possible actions are: start [trigger & recorder], stop [trigger & recorder], reset [trigger].
+
+    Parameters
+    ----------
+    action: dict
+        The requested action to be performed.
+    """
     print("Status change request received")
-    emit("changeStatus", req_status, broadcast=True)
+    emit("changeStatus", action, broadcast=True)
 
 
 @server.on("statusChanged")
-def on_status_changed(updated_status):
+def on_status_changed(updated_status: dict) -> None:
+    """Event handler for when status is changed. Emitted to by the audio trigger when the status has changed.
+
+    Parameters
+    ----------
+    updated_status: dict
+        The updated status.
+    """
     print("status change fulfilled")
     emit("statusChanged", updated_status, broadcast=True)
 
 
 @server.on("startTrigger")
-def on_start_trigger(device_idx):
+def on_start_trigger(device_idx: int) -> None:
+    """Event handler for the "startTrigger" event. Emitted to by the web client when the user requests to
+    start the trigger.
+
+    Parameters
+    ----------
+    device_idx: int
+        The index of the device to use as the recording and triggering device.
+    """
     print("trigger process started")
     emit("startTrigger", device_idx, broadcast=True)
 
