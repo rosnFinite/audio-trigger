@@ -1,12 +1,9 @@
-import os.path
 import sys
-import eventlet
 
-import socketio
-from eventlet import wsgi
-from flask import Flask, request, make_response
+from flask import Flask, request
 from flask_socketio import SocketIO, emit
 from flask_cors import CORS
+
 from recorder import AudioRecorder
 
 # solution for path problems using vscode
