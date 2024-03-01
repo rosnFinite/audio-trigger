@@ -2,6 +2,8 @@ import sys
 import socketio
 import logging
 
+from typing import List, Dict
+
 from recorder import Trigger
 
 logging.basicConfig(
@@ -21,6 +23,20 @@ def on_connect() -> None:
     It prints a message indicating that the connection has been established.
     """
     print("connected to server")
+    print("Registering as audio trigger client...")
+    client.emit("registerClient", {"type": "audio"})
+
+
+@client.on("clients")
+def on_clients(clients: list) -> None:
+    """Event handler for the "clients" event.
+
+    Parameters
+    ----------
+    clients: List[Dict[str]]
+        The data received from the audio trigger client. Contains the client's session ID.
+    """
+    print("received clients... ", clients)
 
 
 @client.on("changeSettings")

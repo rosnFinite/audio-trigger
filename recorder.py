@@ -557,10 +557,22 @@ class Grid:
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
             logging.info(f"+ Grid entry added - q_score: {q_score}")
+            if self.socket is not None:
+                self.socket.emit("trigger", {
+                    "freq_bin": int(freq_bin - 1),
+                    "dba_bin": int(dba_bin - 1),
+                    "score": float(q_score)
+                })
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
+                if self.socket is not None:
+                    self.socket.emit("trigger", {
+                        "freq_bin": int(freq_bin - 1),
+                        "dba_bin": int(dba_bin - 1),
+                        "score": float(q_score)
+                    })
         # return filename for added trigger point
         return self.__build_file_name(freq_bin - 1, dba_bin - 1)
 
