@@ -170,12 +170,14 @@ class AudioRecorder:
             pass
         stream.close()
 
-    def start_stream(self, input_device_index: int, cb: Optional[Callable[[bytes, int, dict, int], Tuple[bytes, int]]] = None) -> None:
+    def start_stream(self,
+                     input_device_index: Optional[int] = None,
+                     cb: Optional[Callable[[bytes, int, dict, int], Tuple[bytes, int]]] = None) -> None:
         """Start the audio recording stream.
 
         Parameters
         ----------
-        input_device_index : int
+        input_device_index : Optional[int]
             The index of the input device.
         cb : Optional[Callable]
             The callback function for recording audio. If not provided, the default callback will be used.
@@ -185,12 +187,15 @@ class AudioRecorder:
             logging.info("Stream is already running.")
             return
         logging.info("Starting audio stream thread...")
-        self.recording_device = input_device_index
+        if input_device_index is None and self.recording_device is None:
+            raise ValueError("No input device index provided.")
+        if input_device_index is not None:
+            self.recording_device = input_device_index
 
         self.stream_thread_is_running = True
         self.stop_event = Event()
         self.stream_thread = Thread(target=self.__stream_task,
-                                    args=(input_device_index, self.__recording_callback if cb is None else cb))
+                                    args=(self.recording_device, self.__recording_callback if cb is None else cb))
         self.stream_thread.start()
         logging.info("Audio stream started successfully.")
 
@@ -205,7 +210,6 @@ class AudioRecorder:
             self.stop_event.set()
             self.stream_thread.join()
         self.stream_thread_is_running = False
-        self.recording_device = None
         logging.info("Audio stream stopped successfully.")
 
     def stop_stream_and_save_wav(self, parent_dir: str) -> None:
@@ -283,6 +287,7 @@ class Trigger(AudioRecorder):
                  rate: int = 44100,
                  chunksize: int = 1024,
                  socket: Optional[socketio.Client] = None):
+        logging.info(f"Number of channels: {channels}")
         super().__init__(buffer_size, rate, channels, chunksize)
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
         self.__rec_destination = f"{os.path.dirname(os.path.abspath(__file__))}/{rec_destination}"
@@ -346,7 +351,7 @@ class Trigger(AudioRecorder):
         logging.info("Calibration factors successfully loaded.")
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
-    def start_trigger(self, input_device_index: int) -> None:
+    def start_trigger(self, input_device_index: Optional[int] = None) -> None:
         """Start the audio recording stream and trigger on specific audio events.
         """
         self.start_stream(input_device_index, self.__trigger_callback)
@@ -420,7 +425,11 @@ class Grid:
                  socket=None):
         self.__last_data_tuple: Optional[Tuple[int, int]] = None
         self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
+        # upper frequency cutoff, the highest frequency recognized by the trigger
+        self.freq_cutoff: float = round(np.power(2, semitone_bin_size / 12) * self.freq_bins_lb[-1], 3)
         self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size, dba_bounds)
+        # upper dba cutoff, the highest dba recognized by the trigger
+        self.dba_cutoff: float = self.dba_bins_lb[-1] + dba_bin_size
         logging.info(
             f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
         self.min_q_score: float = max_q_score
@@ -535,12 +544,14 @@ class Grid:
         Optional[str]
             The filename of the recorded audio file if the trigger point was added to the grid. Otherwise, None.
         """
+        # if freq and/or dba are out of bounds
+        if freq > self.freq_cutoff or dba > self.dba_cutoff:
+            return None
+        if freq < self.freq_bins_lb[0] or dba < self.dba_bins_lb[0]:
+            return None
         # find corresponding freq and db bins
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
-        if freq_bin == 0 or dba_bin == 0:
-            # value is smaller than the lowest bound
-            return None
         logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
         if self.socket is not None:
             self.socket.emit("voice", {
