@@ -319,15 +319,6 @@ class Trigger(AudioRecorder):
             "dbaBinSize": dba_bin_size
         }
         logging.info(f"Successfully created trigger: {self.instance_settings}")
-        # check for ni daq board
-        """
-        self.daq = None
-        if len(nidaqmx.system.System.local().devices) == 0:
-            logging.info("No connected DAQ-Board found. Continue without...")
-        else:
-            logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
-            self.daq = nidaqmx.system.System.local().devices[0]
-        """
 
     def __check_rec_destination(self) -> None:
         """Check if the destination folder for the recorded audio files exists. If not, create it.
@@ -435,6 +426,13 @@ class Grid:
         self.min_q_score: float = max_q_score
         self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
         self.socket = socket
+        # check for ni daq board
+        self.daq = None
+        if len(nidaqmx.system.System.local().devices) == 0:
+            logging.info("No DAQ-Board connected. Continuing without...")
+        else:
+            logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
+            self.daq = nidaqmx.system.System.local().devices[0]
 
     @staticmethod
     def __is_bounds_valid(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
@@ -509,6 +507,15 @@ class Grid:
         while lower_bounds[-1] < max(dba_bounds):
             lower_bounds.append(lower_bounds[-1] + dba_bin_size)
         return lower_bounds
+    
+    def __set_daq_trigger(self):
+        with nidaqmx.Task(new_task_name="AudioTrigger") as trig_task:
+            trig_task.do_channels.add_do_chan("/Dev1/PFI0")
+            trig_task.write(True)
+            trig_task.wait_until_done(timeout=1)
+            trig_task.write(False)
+            trig_task.stop()
+            logging.info("DAQ trigger signal send successfully.")
 
     def __create_socket_payload(self) -> dict:
         """Create a payload for the socket event.
@@ -567,6 +574,7 @@ class Grid:
         old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
         if old_q_score is None:
             self.grid[dba_bin - 1][freq_bin - 1] = q_score
+            self.__set_daq_trigger()
             logging.info(f"+ Grid entry added - q_score: {q_score}")
             if self.socket is not None:
                 self.socket.emit("trigger", {
@@ -577,6 +585,7 @@ class Grid:
         else:
             if old_q_score > q_score:
                 self.grid[dba_bin - 1][freq_bin - 1] = q_score
+                self.__set_daq_trigger()
                 logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
                 if self.socket is not None:
                     self.socket.emit("trigger", {
@@ -620,5 +629,5 @@ class Grid:
 
 
 if __name__ == "__main__":
-    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="./calibration/Behringer.json")
+    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="./calibration/Behringer.json", min_q_score=100)
     trigger.start_trigger(1)
