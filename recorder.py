@@ -419,11 +419,14 @@ class Grid:
         self.socket = socket
         # check for ni daq board
         self.daq = None
-        if len(nidaqmx.system.System.local().devices) == 0:
-            logging.info("No DAQ-Board connected. Continuing without...")
-        else:
-            logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
-            self.daq = nidaqmx.system.System.local().devices[0]
+        try:
+            if len(nidaqmx.system.System.local().devices) == 0:
+                logging.info("No DAQ-Board connected. Continuing without...")
+            else:
+                logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
+                self.daq = nidaqmx.system.System.local().devices[0]
+        except nidaqmx.errors.DaqNotFoundError:
+            logging.info("No NI-DAQmx installation found on this device. Continuing without...")
 
     @staticmethod
     def __is_bounds_valid(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
@@ -500,6 +503,8 @@ class Grid:
         return lower_bounds
     
     def __set_daq_trigger(self):
+        if self.daq is None:
+            return
         with nidaqmx.Task(new_task_name="AudioTrigger") as trig_task:
             trig_task.do_channels.add_do_chan("/Dev1/PFI0")
             trig_task.write(True)
