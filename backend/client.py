@@ -59,6 +59,11 @@ def on_settings_change(settings: dict) -> None:
                            rate=settings["sampleRate"],
                            chunksize=settings["chunkSize"],
                            socket=client)
+    if settings["device"] == -1:
+        this.trigger.recording_device = 1
+        #TODO: Ändern für automatische Auswahl des iMic-Microphone
+    else:
+        this.trigger.recording_device = settings["device"]
     settings["status"]["recorder"] = "ready"
     settings["status"]["trigger"] = "ready"
     logging.info("Emitting changes in recorder/trigger status...")
@@ -78,7 +83,8 @@ def on_status_update(action: dict) -> None:
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
         if not this.trigger.stream_thread_is_running:
-            this.trigger.start_trigger(1)
+            print(f"Starting trigger, device {this.trigger.recording_device}")
+            this.trigger.start_trigger()
             client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
@@ -88,23 +94,16 @@ def on_status_update(action: dict) -> None:
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
             this.trigger.grid.reset_grid()
-            client.emit("statusChanged", {"recorder": "ready", "trigger": "ready"})
-
-
-@client.on("startTrigger")
-def on_start_trigger(device_idx: int) -> None:
-    """Starts the trigger if it is not already running and emits a status change event.
-
-    Parameters
-    ----------
-    device_idx : int
-        The index of the device to use for recording and triggering.
-    """
-    if not this.trigger.stream_thread_is_running:
-        this.trigger.start_trigger(device_idx)
-    client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
+            client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
 
 
 if __name__ == "__main__":
-    client.connect("http://localhost:5001")
-    client.wait()
+    try:
+        client.connect("http://localhost:5001")
+        client.wait()
+    except KeyboardInterrupt:
+        print("Exiting...")
+        client.disconnect()
+        sys.exit(0)
+
+# TODO: Bundle into executable to run server an client in seperate processes
