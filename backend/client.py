@@ -97,6 +97,18 @@ def on_status_update(action: dict) -> None:
             client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
 
 
+@client.on("removeRecording")
+def on_remove_recording(grid_location: dict) -> None:
+    """Function to handle the "removeRecording" event. Removes the recording at the specified grid location.
+
+    Parameters
+    ----------
+    grid_location : dict
+        Dictionary containing the grid location of the recording to be removed. {freqBin, dbBin}
+    """
+    this.trigger.grid.grid[grid_location["dbaBin"]][grid_location["freqBin"]] = None
+
+
 if __name__ == "__main__":
     try:
         client.connect("http://localhost:5001")

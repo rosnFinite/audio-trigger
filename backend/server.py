@@ -220,5 +220,21 @@ def on_start_trigger(device_idx: int) -> None:
     emit("startTrigger", device_idx, to="client_room", skip_sid=request.sid)
 
 
+@server.on("removeRecording")
+def on_remove_recording(grid_location: dict) -> None:
+    """Event handler for the "removeRecording" event. Emitted to by the web client when the user requests to remove a
+    recording from the grid. Payload contains the grid location of the recording to be removed {freqBin, dbBin}.
+
+    Parameters
+    ----------
+    grid_location: dict
+        The grid location of the recording to be removed. {freqBin, dbBin}
+    """
+    if not check_registration(request.sid):
+        return
+    print("remove recording request received")
+    emit("removeRecording", grid_location, to="client_room", skip_sid=request.sid)
+
+
 if __name__ == '__main__':
     server.run(app, port=5001, debug=True)
