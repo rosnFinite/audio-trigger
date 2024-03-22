@@ -276,7 +276,7 @@ def update_microphone_value_in_calib(n_intervals: int) -> str:
     State("microphone-select", "value"),
     prevent_initial_call=True
 )
-def hanlde_recording_on_menu_change(menu_value: str, mic_value: int) -> Tuple[bool, bool, go.Figure, bool, bool]:
+def handle_recording_on_menu_change(menu_value: str, mic_value: int) -> Tuple[bool, bool, go.Figure, bool, bool]:
     """Callback for automatic starting and stopping of audio input streams when opening and closing accordion panels.
     Will additionally update states of other components such as the ButtonGroup for controlling the trigger.
 
