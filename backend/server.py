@@ -1,7 +1,8 @@
 import sys
+import os
 from typing import Tuple, Dict, Any, List
 
-from flask import Flask, request
+from flask import Flask, request, send_from_directory
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
@@ -52,6 +53,17 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     for idx, device in enumerate(AudioRecorder().recording_devices):
         device_list.append({"id": str(idx), "name": device})
     return {"devices": device_list}, 200
+
+
+@app.route("/api/recordings/<path:path>", methods=["GET"])
+def send_image(path):
+    """Handle GET request for images in the recordings directory."""
+    if not os.path.exists(path):
+        return {"message": "File not found"}, 404
+    if path.endswith(".jpg") or path.endswith(".png"):
+        return send_from_directory("recordings", path), 200
+    else:
+        return {"message": "Provided file extension is not allowed"}, 406
 
 
 @server.on("connect")

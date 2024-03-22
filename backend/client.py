@@ -1,4 +1,6 @@
 import sys
+import time
+
 import socketio
 import logging
 
@@ -49,7 +51,8 @@ def on_settings_change(settings: dict) -> None:
         Dictionary containing the updated settings.
     """
     logging.info("Creating new trigger instance..")
-    this.trigger = Trigger(min_q_score=settings["qualityScore"],
+    this.trigger = Trigger(rec_destination=f"./backend/recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
+                           max_q_score=settings["qualityScore"],
                            semitone_bin_size=settings["frequency"]["steps"],
                            freq_bounds=(settings["frequency"]["lower"], settings["frequency"]["upper"]),
                            dba_bin_size=settings["db"]["steps"],

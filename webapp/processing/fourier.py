@@ -115,8 +115,9 @@ def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, flo
                       microphone value and correction factor as values
     :return:
     """
-    weighted_signal = A_weight(data, fs=rate)
-    rms_value = np.sqrt(np.mean(np.abs(weighted_signal) ** 2))
+    # temporarily disable A weighting (high computational cost)
+    # weighted_signal = A_weight(data, fs=rate)
+    rms_value = np.sqrt(np.mean(np.power(np.abs(data).astype(np.int32), 2)))
     result = 20 * np.log10(rms_value)
     if corr_dict is None:
         return result
