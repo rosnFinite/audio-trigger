@@ -1,27 +1,25 @@
-import dataclasses
 import logging
 import os
 import json
 import time
 from threading import Thread, Event
-from typing import List, Optional, Tuple, Union, Callable
+from typing import List, Optional, Tuple, Callable
 
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
 import collections
-import plotly.graph_objs as go
-import nidaqmx
 import socketio
-from socketio.exceptions import ConnectionError
 
+from voice_field import VoiceField
 from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
 
 logging.basicConfig(
-    format='%(asctime)s %(levelname)-8s %(message)s',
+    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
     level=logging.DEBUG,
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logging.getLogger(__name__)
 
 
 class AudioRecorder:
@@ -245,7 +243,7 @@ class Trigger(AudioRecorder):
         The destination folder for saving the recorded audio files.
     dba_calib_file : Optional[str]
         The path to the file containing calibration factors for dB(A) level calculation.
-    min_q_score : float
+    max_q_score : float
         The minimum quality score threshold for accepting a trigger.
     semitone_bin_size : int
         The size of the semitone bins for frequency analysis.
@@ -270,13 +268,14 @@ class Trigger(AudioRecorder):
     ----------
     calib_factors : dict
         The calibration factors for dB(A) level calculation. None if no calibration file is provided.
-    grid : Grid
+    voice_field : VoiceField
         The grid object for trigger detection and visualization.
     instance_settings : dict
         The settings of the trigger instance.
     socket : socketio.Client
         The websocket connection object.
     """
+
     def __init__(self,
                  rec_destination: str = f"recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                  dba_calib_file: Optional[str] = None,
@@ -310,7 +309,7 @@ class Trigger(AudioRecorder):
                     logging.info("Websocket connection to default server successfully established.")
                 except Exception:
                     logging.info("Websocket connection to default server failed.")
-        self.grid = Grid(semitone_bin_size, freq_bounds, dba_bin_size, dba_bounds, max_q_score,
+        self.voice_field = VoiceField(semitone_bin_size, freq_bounds, dba_bin_size, dba_bounds, max_q_score,
                          self.__rec_destination, self.socket)
         self.instance_settings = {
             "sampleRate": rate,
@@ -324,7 +323,8 @@ class Trigger(AudioRecorder):
             "dbaBinSize": dba_bin_size
         }
         logging.info(f"Successfully created trigger: {self.instance_settings}")
-        self.debug_time = {"total": [], "calc": {"total":[], "fft": [], "dom": [], "dba_weight": [], "score":[]}, "trigger": []}
+        self.debug_time = {"total": [], "calc": {"total": [], "fft": [], "dom": [], "dba_weight": [], "score": []},
+                           "trigger": []}
         self.debug_num_runs = 0
         self.debug_inner_runs = 0
 
@@ -394,11 +394,11 @@ class Trigger(AudioRecorder):
             self.debug_time["calc"]["score"].append(time.time() - score_time)
             self.debug_time["calc"]["total"].append(time.time() - calc_time)
             trig_time = time.time()
-            is_trig = self.grid.add_trigger(dom_freq, dba_level, q_score)
+            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, q_score, {"data": data})
             if is_trig:
+                self.debug_time["trigger"].append(time.time() - trig_time)
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunksize),
-                                        maxlen=int((self.buffer_size * self.rate) / self.chunksize))
-            self.debug_time["trigger"].append(time.time() - trig_time)
+                                                maxlen=int((self.buffer_size * self.rate) / self.chunksize))
         runtime = time.time() - start
         self.debug_time["total"].append(runtime)
         return input_data, pyaudio.paContinue
@@ -415,264 +415,8 @@ class Trigger(AudioRecorder):
         print(f"......score: {sum(self.debug_time['calc']['score']) / len(self.debug_time['calc']['score'])}")
         print(f"...trigger: {sum(self.debug_time['trigger']) / len(self.debug_time['trigger'])}")
         super().stop_stream()
+        self.voice_field.pool.shutdown(wait=True)
         logging.info("Trigger stopped successfully.")
-
-
-class Grid:
-    """
-    Represents a grid for storing and manipulating voice data.
-
-    Parameters
-    ----------
-    semitone_bin_size : int
-        The size of each semitone bin.
-    freq_bounds : Tuple[float, float]
-        The lower and upper bounds of the frequency range.
-    dba_bin_size : int
-        The size of each db(A) bin.
-    dba_bounds : Tuple[int, int]
-        The lower and upper bounds of the db(A) range.
-    max_q_score : float
-        The maximum quality score for a trigger to be added to the grid.
-    socket : Optional
-        The socket object for emitting voice updates. Defaults to None.
-    """
-
-    def __init__(self,
-                 semitone_bin_size: int,
-                 freq_bounds: Tuple[float, float],
-                 dba_bin_size: int,
-                 dba_bounds: Tuple[int, int],
-                 max_q_score: float,
-                 rec_destination: str,
-                 socket=None):
-        self.__last_data_tuple: Optional[Tuple[int, int]] = None
-        self.__rec_destination = rec_destination
-        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
-        # upper frequency cutoff, the highest frequency recognized by the trigger
-        self.freq_cutoff: float = round(np.power(2, semitone_bin_size / 12) * self.freq_bins_lb[-1], 3)
-        self.dba_bins_lb: List[int] = self.__calc_dba_lower_bounds(dba_bin_size, dba_bounds)
-        # upper dba cutoff, the highest dba recognized by the trigger
-        self.dba_cutoff: float = self.dba_bins_lb[-1] + dba_bin_size
-        logging.info(
-            f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
-        self.max_q_score: float = max_q_score
-        self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
-        self.socket = socket
-        # check for ni daq board
-        self.daq = None
-        try:
-            if len(nidaqmx.system.System.local().devices) == 0:
-                logging.info("No DAQ-Board connected. Continuing without...")
-            else:
-                logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
-                self.daq = nidaqmx.system.System.local().devices[0]
-        except nidaqmx.errors.DaqNotFoundError:
-            logging.info("No NI-DAQmx installation found on this device. Continuing without...")
-
-    def __check_folder_exists(self, folder: str) -> None:
-        """Check if the provided folder exists in rec_destination. If not, create it.
-
-        Parameters
-        ----------
-        folder : str
-            The folder to check.
-        """
-        path_to_check = self.__rec_destination + folder
-        if not os.path.exists(path_to_check):
-            os.makedirs(path_to_check)
-
-    @staticmethod
-    def __is_bounds_valid(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
-        """Check if the provided bounds are valid.
-
-        Parameters
-        ----------
-        bounds : Union[Tuple[float, float], Tuple[int, int]]
-            The bounds to check.
-
-        Returns
-        -------
-        bool
-            True if the bounds are valid, False otherwise.
-        """
-        if len(bounds) != 2:
-            return False
-        if bounds[0] == bounds[1]:
-            return False
-        return True
-
-    @staticmethod
-    def __build_file_name(freq_bin: int, dba_bin: int):
-        """Build the filename for the recorded audio file."""
-        return f"freqLB_{freq_bin}_dbaLB_{dba_bin}.wav"
-
-    def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
-        """Calculate the lower bounds of the frequency bins.
-
-        Parameters
-        ----------
-        semitone_bin_size : int
-            The size of each semitone bin.
-        freq_bounds : Tuple[float, float]
-            The lower and upper bounds of the frequency range.
-
-        Returns
-        -------
-        List[float]
-            The lower bounds of the frequency bins.
-        """
-        if not self.__is_bounds_valid(freq_bounds):
-            logging.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
-                             f"Got {freq_bounds}")
-            raise ValueError("Provided frequency bounds are not valid.")
-        # arbitrary start point for semitone calculations
-        lower_bounds = [min(freq_bounds)]
-        while lower_bounds[-1] < max(freq_bounds):
-            lower_bounds.append(round(np.power(2, semitone_bin_size / 12) * lower_bounds[-1], 3))
-        return lower_bounds
-
-    def __calc_dba_lower_bounds(self, dba_bin_size: int, dba_bounds: Tuple[int, int]) -> List[int]:
-        """Calculate the lower bounds of the db(A) bins.
-
-        Parameters
-        ----------
-        dba_bin_size : int
-            The size of each db(A) bin.
-        dba_bounds : Tuple[int, int]
-            The lower and upper bounds of the db(A) range.
-
-        Returns
-        -------
-        List[int]
-            The lower bounds of the db(A) bins.
-        """
-        if not self.__is_bounds_valid(dba_bounds):
-            logging.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
-                             f"Got {dba_bounds}")
-            raise ValueError("Provided db(A) bounds are not valid.")
-        lower_bounds = [min(dba_bounds)]
-        while lower_bounds[-1] < max(dba_bounds):
-            lower_bounds.append(lower_bounds[-1] + dba_bin_size)
-        return lower_bounds
-
-    def __set_daq_trigger(self):
-        if self.daq is None:
-            return
-        with nidaqmx.Task(new_task_name="AudioTrigger") as trig_task:
-            trig_task.do_channels.add_do_chan("/Dev1/PFI0")
-            trig_task.write(True)
-            trig_task.wait_until_done(timeout=1)
-            trig_task.write(False)
-            trig_task.stop()
-            logging.info("DAQ trigger signal send successfully.")
-
-    def __create_socket_payload(self) -> dict:
-        """Create a payload for the socket event.
-
-        Returns
-        -------
-        dict
-            The payload for the socket event.
-        """
-        return {str(idx): freqs for idx, freqs in enumerate(self.grid)}
-
-    def reset_grid(self) -> None:
-        """Reset the grid to its initial state.
-        """
-        logging.debug("GRID resetted")
-        self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
-
-    def add_trigger(self, freq: float, dba: float, q_score: float) -> bool:
-        """Adds a trigger point to the recorder. If the quality score is below the threshold, the trigger point will be
-        added to the grid. If a socket is provided, the trigger point will be emitted to the server.
-
-        Parameters
-        ----------
-        freq : float
-            The frequency of the trigger point.
-        dba : float
-            The db(A) level of the trigger point.
-        q_score : float
-            The quality score of the trigger point.
-        """
-        # if freq and/or dba are out of bounds
-        if freq > self.freq_cutoff or dba > self.dba_cutoff:
-            return False
-        if freq < self.freq_bins_lb[0] or dba < self.dba_bins_lb[0]:
-            return False
-        # find corresponding freq and db bins
-        freq_bin = np.searchsorted(self.freq_bins_lb, freq)
-        dba_bin = np.searchsorted(self.dba_bins_lb, dba)
-        logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], q_score: {q_score}")
-        if self.socket is not None:
-            self.socket.emit("voice", {
-                "freq_bin": int(freq_bin - 1),
-                "dba_bin": int(dba_bin - 1),
-                "freq": float(freq),
-                "dba": float(dba),
-                "score": float(q_score)
-            })
-        self.__last_data_tuple = (freq_bin, dba_bin)
-        if q_score < 0:
-            return False
-        old_q_score = self.grid[dba_bin - 1][freq_bin - 1]
-        if old_q_score is None:
-            self.grid[dba_bin - 1][freq_bin - 1] = q_score
-            self.__set_daq_trigger()
-            logging.info(f"+ Grid entry added - q_score: {q_score}")
-            if self.socket is not None:
-                self.socket.emit("trigger", {
-                    "freq_bin": int(freq_bin - 1),
-                    "dba_bin": int(dba_bin - 1),
-                    "score": float(q_score)
-                })
-            return True
-        else:
-            # at least 10% better than previous entry
-            if old_q_score < q_score * 0.9:
-                self.grid[dba_bin - 1][freq_bin - 1] = q_score
-                self.__set_daq_trigger()
-                logging.info(f"++ Grid entry updated - q_score: {old_q_score} -> {q_score}")
-                if self.socket is not None:
-                    self.socket.emit("trigger", {
-                        "freq_bin": int(freq_bin - 1),
-                        "dba_bin": int(dba_bin - 1),
-                        "score": float(q_score)
-                    })
-                return True
-        return False
-
-    def create_heatmap(self) -> go.Figure:
-        """Generates a heatmap figure with grid data and adds a scatter trace if last data tuple is available.
-
-        Returns
-        -------
-        go.Figure
-            The generated heatmap figure.
-        """
-        fig = go.Figure(data=go.Heatmap(
-            z=self.grid,
-            hoverongaps=False
-        ))
-        if self.__last_data_tuple is not None:
-            freq, dba = self.__last_data_tuple
-            fig.add_trace(
-                go.Scatter(x=[freq - 1], y=[dba - 1])
-            )
-        fig.update_layout(
-            xaxis=dict(
-                tickmode="array",
-                tickvals=list(range(len(self.freq_bins_lb))),
-                ticktext=["%.2f" % freq_bin for freq_bin in self.freq_bins_lb]
-            ),
-            yaxis=dict(
-                tickmode="array",
-                tickvals=list(range(len(self.dba_bins_lb))),
-                ticktext=self.dba_bins_lb
-            )
-        )
-        return fig
 
 
 if __name__ == "__main__":

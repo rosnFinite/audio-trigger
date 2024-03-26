@@ -9,12 +9,13 @@ from typing import List, Dict
 from recorder import Trigger
 
 logging.basicConfig(
-    format='%(asctime)s %(levelname)-8s %(message)s',
+    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
     level=logging.DEBUG,
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logging.getLogger(__name__)
 
-client = socketio.Client(logger=True, engineio_logger=True)
+client = socketio.Client(logger=False, engineio_logger=False)
 this = sys.modules[__name__]
 this.trigger = None
 
@@ -24,8 +25,7 @@ def on_connect() -> None:
     """This function is called when the client successfully connects to the server.
     It prints a message indicating that the connection has been established.
     """
-    print("connected to server")
-    print("Registering as audio trigger client...")
+    logging.info("Connection to websocket server established. Registering as audio trigger client...")
     client.emit("registerClient", {"type": "audio"})
 
 
@@ -38,7 +38,7 @@ def on_clients(clients: list) -> None:
     clients: List[Dict[str]]
         The data received from the audio trigger client. Contains the client's session ID.
     """
-    print("received clients... ", clients)
+    logging.debug(f"Received clients event with connected client: {clients}", )
 
 
 @client.on("changeSettings")
@@ -50,7 +50,7 @@ def on_settings_change(settings: dict) -> None:
     settings : dict
         Dictionary containing the updated settings.
     """
-    logging.info("Creating new trigger instance..")
+    logging.debug("Received change setting event. Creating new trigger instance..")
     this.trigger = Trigger(rec_destination=f"./backend/recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                            max_q_score=settings["qualityScore"],
                            semitone_bin_size=settings["frequency"]["steps"],
@@ -69,7 +69,7 @@ def on_settings_change(settings: dict) -> None:
         this.trigger.recording_device = settings["device"]
     settings["status"]["recorder"] = "ready"
     settings["status"]["trigger"] = "ready"
-    logging.info("Emitting changes in recorder/trigger status...")
+    logging.debug("Emitting changed settings to server...")
     client.emit("settingsChanged", settings)
 
 
@@ -83,20 +83,23 @@ def on_status_update(action: dict) -> None:
     action : dict
         Dictionary containing the action trigger.
     """
+    logging.debug(f"Received change status event: {action}")
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
         if not this.trigger.stream_thread_is_running:
-            print(f"Starting trigger, device {this.trigger.recording_device}")
+            logging.debug(f"Starting trigger, device: {this.trigger.recording_device}")
             this.trigger.start_trigger()
             client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
+            logging.debug("Trigger stopped.")
             client.emit("statusChanged", {"recorder": "ready", "trigger": "ready"})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
-            this.trigger.grid.reset_grid()
+            this.trigger.voice_field.reset_grid()
+            logging.debug("Trigger reset.")
             client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
 
 
@@ -109,7 +112,13 @@ def on_remove_recording(grid_location: dict) -> None:
     grid_location : dict
         Dictionary containing the grid location of the recording to be removed. {freqBin, dbBin}
     """
-    this.trigger.grid.grid[grid_location["dbaBin"]][grid_location["freqBin"]] = None
+    this.trigger.voice_field.grid[grid_location["dbaBin"]][grid_location["freqBin"]] = None
+    logging.debug(f"Removed recording at grid location: {grid_location}")
+
+
+def run_client():
+    client.connect("http://localhost:5001")
+    client.wait()
 
 
 if __name__ == "__main__":
