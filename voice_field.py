@@ -98,6 +98,18 @@ class VoiceField:
             return False
         return True
 
+    def __submit_threadpool_task(self, task, *args):
+        """Create a thread pool for concurrent execution."""
+        try:
+            self.pool.submit(task, *args)
+        except RuntimeError:
+            logging.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
+                            "error: Cause by stopping and restarting same trigger instance. Reinitializing "
+                            "threadpool...")
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            self.pool.submit(task, *args)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
     def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
         """Calculate the lower bounds of the frequency bins.
 
@@ -238,7 +250,7 @@ class VoiceField:
             self.__set_daq_trigger()
             logging.info(f"+ {self.id} Grid entry added - score: {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.pool.submit(self.save_data, plot_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, plot_data, freq_bin, dba_bin, self.id)
             return True
         # at least 10% better than previous entry
         if existing_score < score * 0.9:
@@ -247,7 +259,7 @@ class VoiceField:
             self.__set_daq_trigger()
             logging.info(f"++ {self.id} Grid entry updated - score: {existing_score} -> {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.pool.submit(self.save_data, plot_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, plot_data, freq_bin, dba_bin, self.id)
             return True
         return False
 
