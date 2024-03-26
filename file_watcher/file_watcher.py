@@ -1,7 +1,9 @@
 import logging
 import time
+import numpy as np
 from multiprocessing import Queue
 from threading import Thread
+import random
 
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
@@ -21,9 +23,20 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
         self.queue = queue
 
     def on_created(self, event):
-        logging.info(f"File created: {event.src_path}")
+        identifier = random.randint(0, 10000)
+        logging.info(f"Identifier: {identifier} File created: {event.src_path}")
         parent_dir = "\\".join(event.src_path.split("\\")[:-1])
-        self.queue.put({"dir_path": parent_dir, "file_path": event.src_path})
+        # solution to fix issue of file not being fully created yet
+        # on creation event does not take writing process into account
+        file = None
+        while file is None:
+            try:
+                file = np.load(event.src_path)
+            except (EOFError, ValueError):
+                file = None
+                logging.warning(f"Not yet finished creating {event.src_path}...")
+                time.sleep(0.1)
+        self.queue.put({"id": identifier, "dir_path": parent_dir, "numpy": file})
 
 
 def start_watchdog(watchdog_queue, dir_path):
