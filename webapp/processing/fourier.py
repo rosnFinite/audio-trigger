@@ -37,7 +37,11 @@ def get_dominant_note(data: Optional[np.ndarray] = None,
     :return:
     """
     freq = get_dominant_freq(data, rate, abs_freq, w)
-    note = librosa.hz_to_note(freq)
+    try:
+        note = librosa.hz_to_note(freq)
+    except OverflowError:
+        #TODO excetion if freq == 0
+        return None
     return note
 
 
@@ -111,8 +115,9 @@ def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, flo
                       microphone value and correction factor as values
     :return:
     """
-    weighted_signal = A_weight(data, fs=rate)
-    rms_value = np.sqrt(np.mean(np.abs(weighted_signal) ** 2))
+    # temporarily disable A weighting (high computational cost)
+    # weighted_signal = A_weight(data, fs=rate)
+    rms_value = np.sqrt(np.mean(np.power(np.abs(data).astype(np.int32), 2)))
     result = 20 * np.log10(rms_value)
     if corr_dict is None:
         return result
