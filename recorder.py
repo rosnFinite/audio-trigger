@@ -293,7 +293,7 @@ class Trigger(AudioRecorder):
         super().__init__(buffer_size, rate, channels, chunksize)
         self.max_q_score = max_q_score
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
-        self.__rec_destination = f"{os.path.dirname(os.path.abspath(__file__))}/{rec_destination}"
+        self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
         # create a websocket connection
@@ -310,7 +310,7 @@ class Trigger(AudioRecorder):
                 except Exception:
                     logging.info("Websocket connection to default server failed.")
         self.voice_field = VoiceField(semitone_bin_size, freq_bounds, dba_bin_size, dba_bounds, max_q_score,
-                         self.__rec_destination, self.socket)
+                         self.rec_destination, self.socket)
         self.instance_settings = {
             "sampleRate": rate,
             "bufferSize": buffer_size,
@@ -331,9 +331,10 @@ class Trigger(AudioRecorder):
     def __check_rec_destination(self) -> None:
         """Check if the destination folder for the recorded audio files exists. If not, create it.
         """
-        if os.path.exists(self.__rec_destination):
+        print(f"Checking rec destination: {self.rec_destination}")
+        if os.path.exists(self.rec_destination):
             return
-        os.makedirs(self.__rec_destination)
+        os.makedirs(self.rec_destination)
 
     @staticmethod
     def __load_calib_factors(dba_calib_file: str) -> dict:
@@ -394,7 +395,8 @@ class Trigger(AudioRecorder):
             self.debug_time["calc"]["score"].append(time.time() - score_time)
             self.debug_time["calc"]["total"].append(time.time() - calc_time)
             trig_time = time.time()
-            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, q_score, {"data": data})
+            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, q_score,
+                                                   trigger_data={"data": data, "sampling_rate": self.rate})
             if is_trig:
                 self.debug_time["trigger"].append(time.time() - trig_time)
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunksize),

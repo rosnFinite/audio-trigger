@@ -69,12 +69,13 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
 
 
 @app.route("/api/recordings/<path:path>", methods=["GET"])
-def send_image(path):
-    """Handle GET request for images in the recordings directory."""
+def get_image(path):
+    """Handle GET request for images in the recordings directory either by providing the correct path or the freq/dba
+    bin equivalent.
+
+    For example: /api/recordings/0_0/[file] will return the image for the first frequency and dba bin. Which would be
+    equivalent to providing the path /api/recordings/35_55/[file] when 35 and 55 are the corresponding dba/freq values."""
     logging.debug(f"GET request for file: /recordings/{path}")
-    if not os.path.exists(path):
-        logging.debug(f"GET file: /recordings/{path} not found.")
-        return {"message": "File not found"}, 404
     if path.endswith(".jpg") or path.endswith(".png"):
         logging.debug(f"File: /recordings/{path} sent successfully.")
         return send_from_directory("recordings", path), 200

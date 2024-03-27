@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 
@@ -51,7 +52,7 @@ def on_settings_change(settings: dict) -> None:
         Dictionary containing the updated settings.
     """
     logging.debug("Received change setting event. Creating new trigger instance..")
-    this.trigger = Trigger(rec_destination=f"./backend/recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
+    this.trigger = Trigger(rec_destination=os.path.join("backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
                            max_q_score=settings["qualityScore"],
                            semitone_bin_size=settings["frequency"]["steps"],
                            freq_bounds=(settings["frequency"]["lower"], settings["frequency"]["upper"]),
@@ -62,6 +63,7 @@ def on_settings_change(settings: dict) -> None:
                            rate=settings["sampleRate"],
                            chunksize=settings["chunkSize"],
                            socket=client)
+    settings["save_location"] = this.trigger.rec_destination
     if settings["device"] == -1:
         this.trigger.recording_device = 1
         #TODO: Ändern für automatische Auswahl des iMic-Microphone
@@ -129,5 +131,4 @@ if __name__ == "__main__":
         print("Exiting...")
         client.disconnect()
         sys.exit(0)
-
 # TODO: Bundle into executable to run server an client in seperate processes
