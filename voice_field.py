@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import logging
 import os
 import shutil
@@ -207,6 +208,15 @@ class VoiceField:
                 file_path = f"{directory}/input_data.npy"
                 with open(file_path, "wb") as f:
                     np.save(f, trigger_data["data"])
+                with open(f"{directory}/meta.json", "w") as f:
+                    json_object = json.dumps({
+                        "frequency_bin": int(freq_bin - 1),
+                        "frequency": self.freq_bins_lb[freq_bin - 1],
+                        "dba_bin": int(dba_bin - 1),
+                        "dba": self.dba_bins_lb[dba_bin - 1],
+                        "score": self.grid[dba_bin - 1][freq_bin - 1],
+                    })
+                    f.write(json_object)
                 wav.write(f"{directory}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
                 logging.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
             except Exception as e:
