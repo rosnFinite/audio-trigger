@@ -15,9 +15,19 @@ def create_visualizations(get_event):
     sound = get_event["parsel_sound"]
     parent_dir = get_event["dir_path"]
 
+    intensity = sound.to_intensity()
+    spectrogram = sound.to_spectrogram()
+    pitch = sound.to_pitch()
+
     with plot_lock:
         plot_waveform(sound, parent_dir)
-        plot_spectrogram_and_intensity(sound, parent_dir)
+        plot_spectrogram_and_intensity(sound, spectrogram, intensity, parent_dir)
+    # store parselmouth pitch information
+
+    with open(f"{parent_dir}/parsel_stats.txt", "w") as f:
+        print(sound, file=f)
+        print(pitch, file=f)
+        print(intensity, file=f)
     logging.debug(f"TIME: {time.time() - start}")
 
 
@@ -32,27 +42,25 @@ def plot_waveform(data, location):
     plt.close()
 
 
-def plot_spectrogram_and_intensity(data, location):
+def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
     plt.figure()
 
-    spectogram = data.to_spectrogram()
-    X, Y = spectogram.x_grid(), spectogram.y_grid()
-    sg_db = 10 * np.log10(spectogram.values)
+    X, Y = spectrogram.x_grid(), spectrogram.y_grid()
+    sg_db = 10 * np.log10(spectrogram.values)
     plt.pcolormesh(X, Y, sg_db, vmin=sg_db.max() - 70, cmap='afmhot')
-    plt.ylim([spectogram.ymin, spectogram.ymax])
+    plt.ylim([spectrogram.ymin, spectrogram.ymax])
     plt.xlabel("Zeit [s]")
     plt.ylabel("Frequenz [Hz]")
 
     plt.twinx()
 
-    intensity = data.to_intensity()
     plt.plot(intensity.xs(), intensity.values.T, linewidth=3, color='w')
     plt.plot(intensity.xs(), intensity.values.T, linewidth=1)
     plt.grid(False)
     plt.ylim(0)
     plt.ylabel("Intensität [dB]")
 
-    plt.xlim([data.xmin, data.xmax])
+    plt.xlim([sound.xmin, sound.xmax])
     plt.savefig(f"{location}/spectrogram_intensity.png")
     logging.debug(f"Spectrogram and intensity plot saved to {location}\\spectrogram_intensity.png")
     plt.close()
