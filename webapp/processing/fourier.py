@@ -5,6 +5,7 @@ import scipy
 import math
 from typing import Optional, Tuple, Any
 from functools import lru_cache
+import parselmouth
 
 from webapp.processing.weighting import A_weight
 from webapp.utility import bisection, freezeargs
@@ -104,6 +105,25 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     amp = abs_freq.argmax()
     scaled = abs_freq / abs_freq[amp]
     return abs(scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:])))
+
+
+def calc_score(data: np.ndarray, rate: int) -> Tuple[float, float]:
+    # fourier transform
+    fourier = scipy.fft.rfft(data)
+    sound = parselmouth.Sound(data, sampling_frequency=rate)
+
+    # intensity score via standard deviation 1 = high consistency, 0 = low consistency over time
+    intensity = sound.to_intensity(time_step=0.01)
+    intensity_std = np.std(intensity.values)
+    intensity_score = 1 / (1+np.std(intensity.values))
+
+    # frequency score
+    pitch = sound.to_pitch(time_step=0.01)
+    pitch_values = [val[0] for val in pitch.selected_array]
+    pitch_std = np.std(pitch_values)
+    pitch_score = 1 / (pitch_std+1)
+
+    return round((intensity_score + pitch_score) / 2, 4), np.mean(pitch_values)
 
 
 def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None) -> float:

@@ -1,12 +1,15 @@
 import concurrent.futures
+import json
 import logging
 import os
 import shutil
 import threading
+import time
 from typing import Tuple, List, Optional, Union
 
 import nidaqmx
 import numpy as np
+import scipy.io.wavfile as wav
 
 
 class VoiceField:
@@ -23,21 +26,21 @@ class VoiceField:
         The size of each db(A) bin.
     dba_bounds : Tuple[int, int]
         The lower and upper bounds of the db(A) range.
-    max_q_score : float
-        The maximum quality score for a trigger to be added to the grid.
+    min_score : float
+        The minimum score required for a trigger to be added. Score is between 1 (best) and 0 (worst).
     socket : Optional
         The socket object for emitting voice updates. Defaults to None.
     """
     def __init__(self,
-                 semitone_bin_size: int,
-                 freq_bounds: Tuple[float, float],
-                 dba_bin_size: int,
-                 dba_bounds: Tuple[int, int],
-                 max_q_score: float,
                  rec_destination: str,
+                 semitone_bin_size: int = 2,
+                 freq_bounds: Tuple[float, float] = (55, 1600),
+                 dba_bin_size: int = 5,
+                 dba_bounds: Tuple[int, int] = (35, 115),
+                 min_score: float = 0.7,
                  socket=None):
-        self.__rec_destination = rec_destination
-        self.max_q_score: float = max_q_score
+        self.rec_destination = rec_destination
+        self.min_score = min_score
         self.socket = socket
         self.daq = self.__check_for_daq()
         self._file_lock = threading.Lock()
@@ -74,9 +77,9 @@ class VoiceField:
             return None
 
     @staticmethod
-    def __build_file_name(freq: float, dba: int):
+    def __build_file_name(freq_bin: int, dba_bin: int):
         """Build the filename for storing artifacts corresponding to a specific grid cell."""
-        return f"{dba}_{int(np.round(freq, 2))}"
+        return f"{dba_bin}_{freq_bin}"
 
     @staticmethod
     def __is_bounds_valid(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
@@ -97,6 +100,18 @@ class VoiceField:
         if bounds[0] == bounds[1]:
             return False
         return True
+
+    def __submit_threadpool_task(self, task, *args):
+        """Create a thread pool for concurrent execution."""
+        try:
+            self.pool.submit(task, *args)
+        except RuntimeError:
+            logging.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
+                            "error: Cause by stopping and restarting same trigger instance. Reinitializing "
+                            "threadpool...")
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            self.pool.submit(task, *args)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
         """Calculate the lower bounds of the frequency bins.
@@ -165,41 +180,52 @@ class VoiceField:
         logging.debug("GRID resetted")
         self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
         # removing stored recordings and creating new folder
-        shutil.rmtree(self.__rec_destination)
-        os.makedirs(self.__rec_destination)
+        shutil.rmtree(self.rec_destination)
+        os.makedirs(self.rec_destination)
 
-    def save_data(self, plot_data: dict, freq_bin: int, dba_bin: int, id: int) -> None:
+    def save_data(self, trigger_data: dict, freq_bin: int, dba_bin: int, id: int) -> None:
         """Saves the data to the rec_destination folder.
 
         Parameters
         ----------
-        plot_data : dict
+        trigger_data : dict
             Dictionary containing the data to save.
         freq_bin : int
             The frequency bin.
         dba_bin : int
             The db(A) bin.
         """
+        start_total = time.time()
         logging.info(f"Thread [{id}]: starting update")
-        folder_name = self.__build_file_name(self.freq_bins_lb[freq_bin - 1],
-                                             self.dba_bins_lb[dba_bin - 1])
+        folder_name = self.__build_file_name(freq_bin - 1, dba_bin - 1)
         logging.info(f"Thread [{id}]: acquiring lock")
         with self._file_lock:
             try:
-                directory = f"{self.__rec_destination}/{folder_name}"
+                start_save = time.time()
+                directory = f"{self.rec_destination}/{folder_name}"
                 if not os.path.exists(directory):
                     os.makedirs(directory)
                 file_path = f"{directory}/input_data.npy"
                 with open(file_path, "wb") as f:
-                    np.save(f, plot_data["data"])
-                logging.info(f"Thread [{id}]: data saved to {file_path}")
+                    np.save(f, trigger_data["data"])
+                with open(f"{directory}/meta.json", "w") as f:
+                    json_object = json.dumps({
+                        "frequency_bin": int(freq_bin - 1),
+                        "frequency": self.freq_bins_lb[freq_bin - 1],
+                        "dba_bin": int(dba_bin - 1),
+                        "dba": self.dba_bins_lb[dba_bin - 1],
+                        "score": self.grid[dba_bin - 1][freq_bin - 1],
+                    })
+                    f.write(json_object)
+                wav.write(f"{directory}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
+                logging.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
             except Exception as e:
                 logging.error(f"Thread [{id}]: error saving data: {e}")
             finally:
                 logging.info(f"Thread [{id}]: releasing lock")
-        logging.info(f"Thread [{id}]: finished update")
+        logging.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total} seconds.")
 
-    def add_trigger(self, freq: float, dba: float, score: float, plot_data: dict) -> bool:
+    def add_trigger(self, freq: float, dba: float, score: float, trigger_data: dict) -> bool:
         """Adds a trigger point to the recorder. If the quality score is below the threshold, the trigger point will be
         added to the grid. If a socket is provided, the trigger point will be emitted to the server.
 
@@ -211,8 +237,9 @@ class VoiceField:
             The db(A) level of the trigger point.
         score : float
             The quality score of the trigger point.
-        plot_data : dict
-            Dictionary containing data needed for visualizations.
+        trigger_data : dict
+            Dictionary containing data coming from audio recoder instance allowing to save additional
+            information on trigger.
         """
         # if freq and/or dba are out of bounds
         if freq > self.freq_cutoff or dba > self.dba_cutoff:
@@ -227,7 +254,7 @@ class VoiceField:
         logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}")
         self.emit_voice(freq_bin, dba_bin, freq, dba, score)
 
-        if score < 0:
+        if score < self.min_score:
             return False
 
         existing_score = self.grid[dba_bin - 1][freq_bin - 1]
@@ -238,7 +265,7 @@ class VoiceField:
             self.__set_daq_trigger()
             logging.info(f"+ {self.id} Grid entry added - score: {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.pool.submit(self.save_data, plot_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, dba_bin, self.id)
             return True
         # at least 10% better than previous entry
         if existing_score < score * 0.9:
@@ -247,7 +274,7 @@ class VoiceField:
             self.__set_daq_trigger()
             logging.info(f"++ {self.id} Grid entry updated - score: {existing_score} -> {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.pool.submit(self.save_data, plot_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, dba_bin, self.id)
             return True
         return False
 

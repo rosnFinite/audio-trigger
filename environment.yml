@@ -8,6 +8,7 @@ dependencies:
   - eventlet
   - scipy
   - python-socketio
+  - python-kaleido
   - plotly
   - nidaqmx-python
   - dash
@@ -17,6 +18,7 @@ dependencies:
   - frozendict
   - dash-mantine-components
   - websocket-client
+  - watchdog
   - simple-websocket
   - pip:
       - dash-iconify==0.1.2
