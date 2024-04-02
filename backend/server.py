@@ -3,7 +3,7 @@ import sys
 import os
 from typing import Tuple, Dict, Any, List
 
-from flask import Flask, request, send_from_directory
+from flask import Flask, request, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
@@ -68,20 +68,33 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     return {"devices": device_list}, 200
 
 
-@app.route("/api/recordings/<path:path>", methods=["GET"])
-def get_image(path):
+@app.route("/api/recordings/<parent_dir>/<sub_dir>/<img>", methods=["GET"])
+def get_image(parent_dir, sub_dir, img):
     """Handle GET request for images in the recordings directory either by providing the correct path or the freq/dba
     bin equivalent.
 
-    For example: /api/recordings/0_0/[file] will return the image for the first frequency and dba bin. Which would be
-    equivalent to providing the path /api/recordings/35_55/[file] when 35 and 55 are the corresponding dba/freq values."""
-    logging.debug(f"GET request for file: /recordings/{path}")
-    if path.endswith(".jpg") or path.endswith(".png"):
-        logging.debug(f"File: /recordings/{path} sent successfully.")
-        return send_from_directory("recordings", path), 200
+    For example: /api/recordings/[parent]/0_0/[file] will return the image for the first frequency and dba bin.
+    Which would be equivalent to providing the path /api/recordings/[parent]/35_55/[file] when 35 and 55 are the
+    corresponding dba/freq values.
+    """
+    logging.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/{img}")
+    if img.endswith(".jpg") or img.endswith(".png"):
+        logging.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} sent successfully.")
+        return send_from_directory("recordings", f"{parent_dir}/{sub_dir}/{img}"), 200
     else:
-        logging.debug(f"File: /recordings/{path} not allowed to be sent. Invalid file extension.")
+        logging.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} not allowed to be sent. Invalid file extension.")
         return {"message": "Provided file extension is not allowed"}, 406
+
+
+@app.route("/api/recordings/<parent_dir>/<sub_dir>/parsel", methods=["GET"])
+def get_parselmouth_stats(parent_dir, sub_dir):
+    # check if file exists
+    logging.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/parsel")
+    if not os.path.exists(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")):
+        return {"message": "File not found"}, 404
+    with open(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")) as f:
+        data = f.read()
+    return jsonify({"text_content": data}), 200
 
 
 @server.on("connect")
