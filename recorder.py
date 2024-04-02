@@ -12,7 +12,7 @@ import collections
 import socketio
 
 from voice_field import VoiceField
-from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft
+from webapp.processing.fourier import get_dominant_freq, calc_quality_score, get_dba_level, fft, calc_score
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
@@ -243,7 +243,7 @@ class Trigger(AudioRecorder):
         The destination folder for saving the recorded audio files.
     dba_calib_file : Optional[str]
         The path to the file containing calibration factors for dB(A) level calculation.
-    max_q_score : float
+    min_score : float
         The minimum quality score threshold for accepting a trigger.
     semitone_bin_size : int
         The size of the semitone bins for frequency analysis.
@@ -279,7 +279,7 @@ class Trigger(AudioRecorder):
     def __init__(self,
                  rec_destination: str = f"recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                  dba_calib_file: Optional[str] = None,
-                 max_q_score: float = 50,
+                 min_score: float = 0.7,
                  semitone_bin_size: int = 2,
                  freq_bounds: Tuple[float, float] = (150.0, 1700.0),
                  dba_bin_size: int = 5,
@@ -291,7 +291,7 @@ class Trigger(AudioRecorder):
                  socket: Optional[socketio.Client] = None):
         logging.info(f"Number of channels: {channels}")
         super().__init__(buffer_size, rate, channels, chunksize)
-        self.max_q_score = max_q_score
+        self.min_score = min_score
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
         self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
         # check if trigger destination folder exists, else create
@@ -309,14 +309,21 @@ class Trigger(AudioRecorder):
                     logging.info("Websocket connection to default server successfully established.")
                 except Exception:
                     logging.info("Websocket connection to default server failed.")
-        self.voice_field = VoiceField(semitone_bin_size, freq_bounds, dba_bin_size, dba_bounds, max_q_score,
-                         self.rec_destination, self.socket)
+        self.voice_field = VoiceField(
+            rec_destination=self.rec_destination,
+            semitone_bin_size=semitone_bin_size,
+            freq_bounds=freq_bounds,
+            dba_bin_size=dba_bin_size,
+            dba_bounds=dba_bounds,
+            min_score=min_score,
+            socket=self.socket
+        )
         self.instance_settings = {
             "sampleRate": rate,
             "bufferSize": buffer_size,
             "chunkSize": chunksize,
             "channels": channels,
-            "qualityScore": max_q_score,
+            "minScore": min_score,
             "freqBounds": freq_bounds,
             "semitoneBinSize": semitone_bin_size,
             "dbaBounds": dba_bounds,
@@ -382,20 +389,15 @@ class Trigger(AudioRecorder):
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
             calc_time = time.time()
+            score, dom_freq = calc_score(data, self.rate)
             fourier, fourier_to_plot, abs_freq, w = fft(data, self.rate)
-            self.debug_time["calc"]["fft"].append(time.time() - calc_time)
-            dom_time = time.time()
-            dom_freq = get_dominant_freq(data, abs_freq=abs_freq, rate=self.rate, w=w)
-            self.debug_time["calc"]["dom"].append(time.time() - dom_time)
+            self.debug_time["calc"]["score"].append(time.time() - calc_time)
             dba_time = time.time()
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
             self.debug_time["calc"]["dba_weight"].append(time.time() - dba_time)
-            score_time = time.time()
-            q_score = calc_quality_score(abs_freq=abs_freq) * -1 + self.max_q_score
-            self.debug_time["calc"]["score"].append(time.time() - score_time)
             self.debug_time["calc"]["total"].append(time.time() - calc_time)
             trig_time = time.time()
-            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, q_score,
+            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, score,
                                                    trigger_data={"data": data, "sampling_rate": self.rate})
             if is_trig:
                 self.debug_time["trigger"].append(time.time() - trig_time)
@@ -411,8 +413,6 @@ class Trigger(AudioRecorder):
         logging.info("Stopping trigger...")
         print(f"Total runtime: {sum(self.debug_time['total']) / len(self.debug_time['total'])}")
         print(f"...calc: {sum(self.debug_time['calc']['total']) / len(self.debug_time['calc']['total'])}")
-        print(f"......fft: {sum(self.debug_time['calc']['fft']) / len(self.debug_time['calc']['fft'])}")
-        print(f"......dom: {sum(self.debug_time['calc']['dom']) / len(self.debug_time['calc']['dom'])}")
         print(f"......dba: {sum(self.debug_time['calc']['dba_weight']) / len(self.debug_time['calc']['dba_weight'])}")
         print(f"......score: {sum(self.debug_time['calc']['score']) / len(self.debug_time['calc']['score'])}")
         print(f"...trigger: {sum(self.debug_time['trigger']) / len(self.debug_time['trigger'])}")

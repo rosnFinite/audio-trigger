@@ -26,21 +26,21 @@ class VoiceField:
         The size of each db(A) bin.
     dba_bounds : Tuple[int, int]
         The lower and upper bounds of the db(A) range.
-    max_q_score : float
-        The maximum quality score for a trigger to be added to the grid.
+    min_score : float
+        The minimum score required for a trigger to be added. Score is between 1 (best) and 0 (worst).
     socket : Optional
         The socket object for emitting voice updates. Defaults to None.
     """
     def __init__(self,
-                 semitone_bin_size: int,
-                 freq_bounds: Tuple[float, float],
-                 dba_bin_size: int,
-                 dba_bounds: Tuple[int, int],
-                 max_q_score: float,
                  rec_destination: str,
+                 semitone_bin_size: int = 2,
+                 freq_bounds: Tuple[float, float] = (55, 1600),
+                 dba_bin_size: int = 5,
+                 dba_bounds: Tuple[int, int] = (35, 115),
+                 min_score: float = 0.7,
                  socket=None):
         self.rec_destination = rec_destination
-        self.max_q_score: float = max_q_score
+        self.min_score = min_score
         self.socket = socket
         self.daq = self.__check_for_daq()
         self._file_lock = threading.Lock()
@@ -254,7 +254,7 @@ class VoiceField:
         logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}")
         self.emit_voice(freq_bin, dba_bin, freq, dba, score)
 
-        if score < 0:
+        if score < self.min_score:
             return False
 
         existing_score = self.grid[dba_bin - 1][freq_bin - 1]
