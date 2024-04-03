@@ -54,6 +54,7 @@ def on_settings_change(settings: dict) -> None:
     logging.debug("Received change setting event. Creating new trigger instance..")
     this.trigger = Trigger(rec_destination=os.path.join("backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
                            min_score=settings["minScore"],
+                           retrigger_score_threshold=settings["retriggerPercentageImprovement"],
                            semitone_bin_size=settings["frequency"]["steps"],
                            freq_bounds=(settings["frequency"]["lower"], settings["frequency"]["upper"]),
                            dba_bin_size=settings["db"]["steps"],

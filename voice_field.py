@@ -28,6 +28,8 @@ class VoiceField:
         The lower and upper bounds of the db(A) range.
     min_score : float
         The minimum score required for a trigger to be added. Score is between 1 (best) and 0 (worst).
+    retrigger_score_threshold: float
+        The minimum quality score improvement [percentage] for retriggering an already set recording.
     socket : Optional
         The socket object for emitting voice updates. Defaults to None.
     """
@@ -38,9 +40,11 @@ class VoiceField:
                  dba_bin_size: int = 5,
                  dba_bounds: Tuple[int, int] = (35, 115),
                  min_score: float = 0.7,
+                 retrigger_score_threshold: float = 0.1,
                  socket=None):
         self.rec_destination = rec_destination
         self.min_score = min_score
+        self.retrigger_score_threshold = retrigger_score_threshold
         self.socket = socket
         self.daq = self.__check_for_daq()
         self._file_lock = threading.Lock()
@@ -267,8 +271,8 @@ class VoiceField:
             self.emit_trigger(freq_bin, dba_bin, score)
             self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, dba_bin, self.id)
             return True
-        # at least 10% better than previous entry
-        if existing_score < score * 0.9:
+        # check if new score is [retrigger_score_threshold] % better than of existing score
+        if existing_score < score and score/existing_score - 1 > self.retrigger_score_threshold:
             self.id += 1
             self.grid[dba_bin - 1][freq_bin - 1] = score
             self.__set_daq_trigger()

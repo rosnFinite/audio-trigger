@@ -245,6 +245,8 @@ class Trigger(AudioRecorder):
         The path to the file containing calibration factors for dB(A) level calculation.
     min_score : float
         The minimum quality score threshold for accepting a trigger.
+    retrigger_score_threshold: float
+        The minimum quality score improvement [percentage] for retriggering an already set recording.
     semitone_bin_size : int
         The size of the semitone bins for frequency analysis.
     freq_bounds : Tuple[float, float]
@@ -280,6 +282,7 @@ class Trigger(AudioRecorder):
                  rec_destination: str = f"recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                  dba_calib_file: Optional[str] = None,
                  min_score: float = 0.7,
+                 retrigger_score_threshold: float = 0.1,
                  semitone_bin_size: int = 2,
                  freq_bounds: Tuple[float, float] = (150.0, 1700.0),
                  dba_bin_size: int = 5,
@@ -316,6 +319,7 @@ class Trigger(AudioRecorder):
             dba_bin_size=dba_bin_size,
             dba_bounds=dba_bounds,
             min_score=min_score,
+            retrigger_score_threshold=retrigger_score_threshold,
             socket=self.socket
         )
         self.instance_settings = {
@@ -324,6 +328,7 @@ class Trigger(AudioRecorder):
             "chunkSize": chunksize,
             "channels": channels,
             "minScore": min_score,
+            "reriggerScoreThreshold": retrigger_score_threshold,
             "freqBounds": freq_bounds,
             "semitoneBinSize": semitone_bin_size,
             "dbaBounds": dba_bounds,
