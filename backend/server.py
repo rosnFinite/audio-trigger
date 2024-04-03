@@ -10,12 +10,9 @@ from flask_cors import CORS
 from audio.recorder import AudioRecorder
 
 logger = logging.getLogger(__name__)
-
-fileHandler = logging.FileHandler("debug.log")
-logFormatter = logging.Formatter("%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s")
-fileHandler.setFormatter(logFormatter)
-
-logger.addHandler(logging.FileHandler("debug.log", mode="w"))
+file_handler = logging.FileHandler(os.path.join(os.getcwd(), "logs", "server.log"), mode="w")
+file_handler.setFormatter(logging.Formatter('%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s'))
+logger.addHandler(file_handler)
 
 # solution for path problems using vscode
 sys.path.append("D:\\rosef\\audio-trigger")

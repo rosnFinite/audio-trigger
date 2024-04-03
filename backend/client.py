@@ -9,14 +9,12 @@ from typing import List, Dict
 
 from audio.recorder import Trigger
 
-logging.basicConfig(
-    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
-    level=logging.DEBUG,
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+file_handler = logging.FileHandler(os.path.join(os.getcwd(), "logs", "client.log"), mode="w")
+file_handler.setFormatter(logging.Formatter('%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s'))
+logger.addHandler(file_handler)
 
-client = socketio.Client(logger=False, engineio_logger=False)
+client = socketio.Client(engineio_logger=False)
 this = sys.modules[__name__]
 this.trigger = None
 
@@ -26,7 +24,7 @@ def on_connect() -> None:
     """This function is called when the client successfully connects to the server.
     It prints a message indicating that the connection has been established.
     """
-    logging.info("Connection to websocket server established. Registering as audio trigger client...")
+    logger.info("Connection to websocket server established. Registering as audio trigger client...")
     client.emit("registerClient", {"type": "audio"})
 
 
@@ -39,7 +37,7 @@ def on_clients(clients: list) -> None:
     clients: List[Dict[str]]
         The data received from the audio trigger client. Contains the client's session ID.
     """
-    logging.debug(f"Received clients event with connected client: {clients}", )
+    logger.debug(f"Received clients event with connected client: {clients}", )
 
 
 @client.on("changeSettings")
@@ -51,7 +49,7 @@ def on_settings_change(settings: dict) -> None:
     settings : dict
         Dictionary containing the updated settings.
     """
-    logging.debug("Received change setting event. Creating new trigger instance..")
+    logger.debug("Received change setting event. Creating new trigger instance..")
     this.trigger = Trigger(rec_destination=os.path.join(os.getcwd(), "backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
                            min_score=settings["minScore"],
                            retrigger_score_threshold=settings["retriggerPercentageImprovement"],
@@ -72,7 +70,7 @@ def on_settings_change(settings: dict) -> None:
         this.trigger.recording_device = settings["device"]
     settings["status"]["recorder"] = "ready"
     settings["status"]["trigger"] = "ready"
-    logging.debug("Emitting changed settings to server...")
+    logger.debug("Emitting changed settings to server...")
     client.emit("settingsChanged", settings)
 
 
@@ -86,23 +84,23 @@ def on_status_update(action: dict) -> None:
     action : dict
         Dictionary containing the action trigger.
     """
-    logging.debug(f"Received change status event: {action}")
+    logger.debug(f"Received change status event: {action}")
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
         if not this.trigger.stream_thread_is_running:
-            logging.debug(f"Starting trigger, device: {this.trigger.recording_device}")
+            logger.debug(f"Starting trigger, device: {this.trigger.recording_device}")
             this.trigger.start_trigger()
             client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
-            logging.debug("Trigger stopped.")
+            logger.debug("Trigger stopped.")
             client.emit("statusChanged", {"recorder": "ready", "trigger": "ready"})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
             this.trigger.voice_field.reset_grid()
-            logging.debug("Trigger reset.")
+            logger.debug("Trigger reset.")
             client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
 
 
@@ -116,7 +114,7 @@ def on_remove_recording(grid_location: dict) -> None:
         Dictionary containing the grid location of the recording to be removed. {freqBin, dbBin}
     """
     this.trigger.voice_field.grid[grid_location["dbaBin"]][grid_location["freqBin"]] = None
-    logging.debug(f"Removed recording at grid location: {grid_location}")
+    logger.debug(f"Removed recording at grid location: {grid_location}")
 
 
 def run_client():

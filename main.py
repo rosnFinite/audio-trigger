@@ -6,6 +6,14 @@ from backend.server import run_server
 from backend.client import run_client
 from file_watcher.file_watcher import run_file_watcher
 
+logging.basicConfig(
+    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
+    level=logging.DEBUG,
+    datefmt='%Y-%m-%d %H:%M:%S',
+    filename='/backend/debug.log',
+    filemode='w'
+)
+
 if __name__ == "__main__":
     processes = []
     try:

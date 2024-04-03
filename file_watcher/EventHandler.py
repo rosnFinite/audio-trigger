@@ -7,11 +7,7 @@ import parselmouth
 from watchdog.events import PatternMatchingEventHandler, FileSystemEvent
 from watchdog.observers import Observer
 
-logging.basicConfig(
-    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
-    level=logging.DEBUG,
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+logger = logging.getLogger(__name__)
 
 
 class ClientRecordingsFileHandler(PatternMatchingEventHandler):
@@ -29,7 +25,7 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
             The event object containing information about the file creation event.
         """
         identifier = random.randint(0, 10000)
-        logging.info(f"Identifier: {identifier} File created: {event.src_path}")
+        logger.info(f"Identifier: {identifier} File created: {event.src_path}")
         parent_dir = "\\".join(event.src_path.split("\\")[:-1])
         # solution to fix issue of file not being fully created yet
         # on creation event does not take writing process into account
@@ -39,7 +35,7 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
                 snd = parselmouth.Sound(event.src_path)
             except (parselmouth.PraatError, TypeError):
                 snd = None
-                logging.warning(f"Not yet finished creating {event.src_path}...")
+                logger.warning(f"Not yet finished creating {event.src_path}...")
                 time.sleep(0.1)
         self.queue.put({"id": identifier, "dir_path": parent_dir, "parsel_sound": snd})
 
@@ -54,7 +50,7 @@ def start_watchdog(q: Queue, path_to_watch: str) -> None:
     path_to_watch : str
         The path to the directory to monitor.
     """
-    logging.info("Starting watchdog observer...")
+    logger.info("Starting watchdog observer...")
     event_handler = ClientRecordingsFileHandler(queue=q)
 
     observer = Observer()
@@ -66,7 +62,7 @@ def start_watchdog(q: Queue, path_to_watch: str) -> None:
             time.sleep(1)
     except Exception as e:
         observer.stop()
-        logging.error(f"An error occurred: {e}")
+        logger.error(f"An error occurred: {e}")
     finally:
         observer.join()
-        logging.info("Watchdog observer stopped.")
+        logger.info("Watchdog observer stopped.")

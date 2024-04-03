@@ -7,11 +7,7 @@ from threading import Thread
 from .EventHandler import start_watchdog
 from .utils import create_visualizations
 
-logging.basicConfig(
-    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
-    level=logging.DEBUG,
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+logger = logging.getLogger(__name__)
 
 
 def run_file_watcher(path_to_watch: str):
@@ -26,7 +22,7 @@ def run_file_watcher(path_to_watch: str):
     watchdog_queue = Queue()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
-    logging.info("Starting watchdog observer thread...")
+    logger.info("Starting watchdog observer thread...")
     worker = Thread(target=start_watchdog, name="Watchdog", args=(watchdog_queue, path_to_watch), daemon=True)
     worker.start()
 
