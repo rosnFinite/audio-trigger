@@ -3,7 +3,7 @@ import sys
 import os
 from typing import Tuple, Dict, Any, List
 
-from flask import Flask, request, send_from_directory, jsonify
+from flask import Flask, request, send_from_directory, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
@@ -42,9 +42,7 @@ def check_registration(sid: str) -> bool:
     bool
         True if the client is registered, False otherwise.
     """
-    logger.debug(f"Checking registration for sid: {sid}")
     sid_registered = sid in [client["sid"] for client in this.connected_clients]
-    logger.debug(f"Client with sid: {sid} is registered: {sid_registered}")
     return sid_registered
 
 
@@ -66,23 +64,31 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     return {"devices": device_list}, 200
 
 
-@app.route("/api/logs", methods=["GET"])
-def get_logs() -> Tuple[str, int]:
-    """Handles GET requests for the log file. No connected audio trigger client is required for this request.
+@app.route("/api/logs/<log>", methods=["GET"])
+def get_logs(log: str) -> tuple[dict[str, str], int] | tuple[Response, int]:
+    """Handles GET requests for a log file. No connected audio trigger client is required for this request.
+
+    Parameters
+    ----------
+    log : str
+        The name of the log file to be returned.
 
     Returns
     -------
     tuple
         A tuple containing the log file content and an integer status code.
     """
-    logger.debug("GET request for log file...")
-    with open("debug.log") as f:
+    # check if file exists
+    if not os.path.exists(os.path.join(os.getcwd(), "logs", f"{log}.log")):
+        return {"message": "File not found"}, 404
+
+    with open(os.path.join(os.getcwd(), "logs", f"{log}.log")) as f:
         log_content = f.read()
-    return log_content, 200
+    return jsonify({"text_content": log_content}), 200
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/<img>", methods=["GET"])
-def get_image(parent_dir, sub_dir, img):
+def get_image(parent_dir: str, sub_dir: str, img: str) -> Tuple[Response, int]:
     """Handle GET request for images in the recordings directory either by providing the correct path or the freq/dba
     bin equivalent.
 
@@ -100,7 +106,7 @@ def get_image(parent_dir, sub_dir, img):
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/parsel", methods=["GET"])
-def get_parselmouth_stats(parent_dir, sub_dir):
+def get_parselmouth_stats(parent_dir: str, sub_dir: str) -> Tuple[Response, int]:
     # check if file exists
     logger.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/parsel")
     if not os.path.exists(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")):
