@@ -7,14 +7,15 @@ from flask import Flask, request, send_from_directory, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
-from recorder import AudioRecorder
+from audio.recorder import AudioRecorder
 
-logging.basicConfig(
-    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
-    level=logging.DEBUG,
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+fileHandler = logging.FileHandler("debug.log")
+logFormatter = logging.Formatter("%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s")
+fileHandler.setFormatter(logFormatter)
+
+logger.addHandler(logging.FileHandler("debug.log", mode="w"))
 
 # solution for path problems using vscode
 sys.path.append("D:\\rosef\\audio-trigger")
@@ -44,9 +45,9 @@ def check_registration(sid: str) -> bool:
     bool
         True if the client is registered, False otherwise.
     """
-    logging.debug(f"Checking registration for sid: {sid}")
+    logger.debug(f"Checking registration for sid: {sid}")
     sid_registered = sid in [client["sid"] for client in this.connected_clients]
-    logging.debug(f"Client with sid: {sid} is registered: {sid_registered}")
+    logger.debug(f"Client with sid: {sid} is registered: {sid_registered}")
     return sid_registered
 
 
@@ -60,12 +61,27 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     tuple
         A tuple containing a dictionary with the available devices and an integer status code.
     """
-    logging.debug("GET request for available recording devices...")
+    logger.debug("GET request for available recording devices...")
     device_list = []
     for idx, device in enumerate(AudioRecorder().recording_devices):
         device_list.append({"id": str(idx), "name": device})
-    logging.debug(f"Return available devices: {device_list}")
+    logger.debug(f"Return available devices: {device_list}")
     return {"devices": device_list}, 200
+
+
+@app.route("/api/logs", methods=["GET"])
+def get_logs() -> Tuple[str, int]:
+    """Handles GET requests for the log file. No connected audio trigger client is required for this request.
+
+    Returns
+    -------
+    tuple
+        A tuple containing the log file content and an integer status code.
+    """
+    logger.debug("GET request for log file...")
+    with open("debug.log") as f:
+        log_content = f.read()
+    return log_content, 200
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/<img>", methods=["GET"])
@@ -77,19 +93,19 @@ def get_image(parent_dir, sub_dir, img):
     Which would be equivalent to providing the path /api/recordings/[parent]/35_55/[file] when 35 and 55 are the
     corresponding dba/freq values.
     """
-    logging.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/{img}")
+    logger.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/{img}")
     if img.endswith(".jpg") or img.endswith(".png"):
-        logging.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} sent successfully.")
+        logger.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} sent successfully.")
         return send_from_directory("recordings", f"{parent_dir}/{sub_dir}/{img}"), 200
     else:
-        logging.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} not allowed to be sent. Invalid file extension.")
+        logger.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} not allowed to be sent. Invalid file extension.")
         return {"message": "Provided file extension is not allowed"}, 406
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/parsel", methods=["GET"])
 def get_parselmouth_stats(parent_dir, sub_dir):
     # check if file exists
-    logging.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/parsel")
+    logger.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/parsel")
     if not os.path.exists(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")):
         return {"message": "File not found"}, 404
     with open(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")) as f:
@@ -102,7 +118,7 @@ def connected():
     """This function is called when a client connects to the server.
     It prints the client's session ID.
     """
-    logging.debug(f"Client connected: {request.sid}")
+    logger.debug(f"Client connected: {request.sid}")
 
 
 @server.on("disconnect")
@@ -110,7 +126,7 @@ def disconnected() -> None:
     """This function is called when a client disconnects from the server.
     Will update list of connected clients, emitting the updated list to all clients.
     """
-    logging.debug(f"Gracefully disconnecting client: {request.sid}")
+    logger.debug(f"Gracefully disconnecting client: {request.sid}")
     # TODO: remove after testing
     if len(this.connected_clients) == 0:
         return
@@ -120,7 +136,7 @@ def disconnected() -> None:
             this.connected_clients.pop(idx)
             leave_room("client_room", request.sid)
             emit("clients", this.connected_clients, broadcast=True)
-    logging.debug(f"Client: {request.sid} disconnected successfully.")
+    logger.debug(f"Client: {request.sid} disconnected successfully.")
 
 
 @server.on("registerClient")
@@ -135,19 +151,19 @@ def on_register_client(data: dict) -> None:
     data: dict
         The data received from the client. Dictionary containing the client's type "type" and session ID "sid".
     """
-    logging.debug(f"Received register event from sid: {request.sid} with data: {data}")
+    logger.debug(f"Received register event from sid: {request.sid} with data: {data}")
     # check if another client with same type is already connected
     for client in this.connected_clients:
         if client["type"] == data["type"]:
             # disconnect emitting if that is the case
             disconnect(request.sid)
-            logging.debug(f"Client with same type: {data['type']} already exists, disconnecting...")
+            logger.debug(f"Client with same type: {data['type']} already exists, disconnecting...")
             return
     # add new client to connected_clients and emit updated list to all clients
     this.connected_clients.append({"sid": request.sid, "type": data["type"]})
     # add client to 'client_room'
     join_room("client_room", request.sid)
-    logging.debug(f"client registered: {request.sid}, emitting updated connected_clients list to 'clients'...")
+    logger.debug(f"client registered: {request.sid}, emitting updated connected_clients list to 'clients'...")
     emit("clients", this.connected_clients, broadcast=True)
 
 
@@ -164,7 +180,7 @@ def handle_grid_update(data: dict) -> None:
     # only registered clients can emit events
     if not check_registration(request.sid):
         return
-    logging.debug(f"Received trigger event from sid:{request.sid} with data: {data}")
+    logger.debug(f"Received trigger event from sid:{request.sid} with data: {data}")
     emit("trigger", data, to="client_room", skip_sid=request.sid)
 
 
@@ -179,7 +195,7 @@ def handle_voice_update(data: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug(f"Received voice data update event from sid: {request.sid} with data: {data}")
+    logger.debug(f"Received voice data update event from sid: {request.sid} with data: {data}")
     emit("voice", data, to="client_room", skip_sid=request.sid)
 
 
@@ -195,7 +211,7 @@ def on_settings(req_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug("Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
+    logger.debug("Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
     emit("changeSettings", req_settings, to="client_room", skip_sid=request.sid)
 
 
@@ -210,7 +226,7 @@ def on_settings_changed(updated_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug("Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
+    logger.debug("Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
     emit("settingsChanged", updated_settings, to="client_room", skip_sid=request.sid)
 
 
@@ -227,7 +243,7 @@ def on_change_status(action: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug(f"Received change status event from sid:{request.sid} with requested status: {action}")
+    logger.debug(f"Received change status event from sid:{request.sid} with requested status: {action}")
     emit("changeStatus", action, to="client_room", skip_sid=request.sid)
 
 
@@ -243,7 +259,7 @@ def on_status_changed(updated_status: dict) -> None:
     if not check_registration(request.sid):
         return
     print("status change fulfilled")
-    logging.debug(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
+    logger.debug(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
     emit("statusChanged", updated_status, to="client_room", skip_sid=request.sid)
 
 
@@ -259,7 +275,7 @@ def on_start_trigger(device_idx: int) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug(f"Received start trigger event from sid: {request.sid} with device index: {device_idx}")
+    logger.debug(f"Received start trigger event from sid: {request.sid} with device index: {device_idx}")
     emit("startTrigger", device_idx, to="client_room", skip_sid=request.sid)
 
 
@@ -275,7 +291,7 @@ def on_remove_recording(grid_location: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logging.debug(f"Received remove recording event from sid: {request.sid} with grid location: {grid_location}")
+    logger.debug(f"Received remove recording event from sid: {request.sid} with grid location: {grid_location}")
     emit("removeRecording", grid_location, to="client_room", skip_sid=request.sid)
 
 
@@ -283,7 +299,7 @@ def run_server():
     """
     Run the web server on port 5001.
     """
-    logging.debug("Starting server on port 5001...")
+    logger.debug("Starting server on port 5001...")
     server.run(app, port=5001, debug=False, log_output=False)
 
 

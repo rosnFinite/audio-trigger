@@ -7,7 +7,7 @@ import logging
 
 from typing import List, Dict
 
-from recorder import Trigger
+from audio.recorder import Trigger
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
@@ -52,7 +52,7 @@ def on_settings_change(settings: dict) -> None:
         Dictionary containing the updated settings.
     """
     logging.debug("Received change setting event. Creating new trigger instance..")
-    this.trigger = Trigger(rec_destination=os.path.join("backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
+    this.trigger = Trigger(rec_destination=os.path.join(os.getcwd(), "backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
                            min_score=settings["minScore"],
                            retrigger_score_threshold=settings["retriggerPercentageImprovement"],
                            semitone_bin_size=settings["frequency"]["steps"],

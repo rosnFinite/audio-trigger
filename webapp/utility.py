@@ -1,12 +1,14 @@
 """
 Collection of utility functions.
 """
-import functools
 import os
-from typing import List
-from frozendict import frozendict
 
+import librosa
+import numpy as np
+import plotly.graph_objs as go
+from typing import List, Optional, Tuple
 
+from audio.processing.scoring import calc_quality_score, fourier_transform
 
 module_path = os.path.abspath(__file__)
 module_dir = os.path.dirname(module_path)
@@ -65,41 +67,43 @@ def get_calibration_file_names() -> List[dict[str, str]]:
     return calib_files
 
 
-def bisection(array, value):
-    '''Given an ``array`` , and given a ``value`` , returns an index j such that ``value`` is between array[j]
-    and array[j+1]. ``array`` must be monotonic increasing. j=-1 or j=len(array) is returned
-    to indicate that ``value`` is out of range below and above respectively.'''
-    n = len(array)
-    if value < array[0]:
-        return -1
-    elif value > array[n - 1]:
-        return n
-    jl = 0  # Initialize lower
-    ju = n - 1  # and upper limits.
-    while ju - jl > 1:  # If we are not yet done,
-        jm = (ju + jl) >> 1  # compute a midpoint with a bitshift
-        if value >= array[jm]:
-            jl = jm  # and replace either the lower limit
-        else:
-            ju = jm  # or the upper limit, as appropriate.
-        # Repeat until the test condition is satisfied.
-    if value == array[0]:  # edge cases at bottom
-        return 0
-    elif value == array[n - 1]:  # and top
-        return n - 1
-    else:
-        return jl
+def get_dominant_note(data: Optional[np.ndarray] = None,
+                      rate: Optional[int] = None,
+                      abs_freq: Optional[np.ndarray] = None,
+                      w: Optional[np.ndarray] = None) -> str:
+    """Returns the strongest represented musical note.
 
-
-def freezeargs(func):
-    """Transform mutable dictionnary
-    Into immutable
-    Useful to be compatible with cache
+    :param w:
+    :param abs_freq:
+    :param data: Numpy array of the recorded audio data.
+    :param rate: Sampling rate of the recorder.
+    :return:
     """
+    freq = get_dominant_freq(data, rate, abs_freq, w)
+    try:
+        note = librosa.hz_to_note(freq)
+    except OverflowError:
+        #TODO excetion if freq == 0
+        return None
+    return note
 
-    @functools.wraps(func)
-    def wrapped(*args, **kwargs):
-        args = tuple([frozendict(arg) if isinstance(arg, dict) else arg for arg in args])
-        kwargs = {k: frozendict(v) if isinstance(v, dict) else v for k, v in kwargs.items()}
-        return func(*args, **kwargs)
-    return wrapped
+
+def plot_abs_fft(data: np.ndarray, rate: int) -> Tuple[go.Figure, str, float]:
+    """Performs FFT on provided data and returns a go.Figure visualizing the frequency domain.
+
+    :param data: Numpy array of the recorded audio data.
+    :param rate: Sampling rate of the recorder.
+    :return:
+    """
+    freq_domain, _ = fourier_transform(data, rate)
+    freq_fig = go.Figure()
+    freq_fig.update_layout(
+        margin=dict(l=5, r=5, t=5, b=10),
+    )
+    abs_freq = np.abs(freq_domain)
+    w = np.linspace(0, rate, len(freq_domain))[0:len(freq_domain) // 2]
+    freq_fig.add_trace(go.Scatter(x=w, y=abs_freq))
+    note = get_dominant_note(abs_freq=abs_freq, w=w)
+    score = calc_quality_score(abs_freq=abs_freq)
+    return freq_fig, note, score
+
