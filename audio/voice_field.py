@@ -187,7 +187,7 @@ class VoiceField:
         shutil.rmtree(self.rec_destination)
         os.makedirs(self.rec_destination)
 
-    def save_data(self, trigger_data: dict, freq_bin: int, dba_bin: int, id: int) -> None:
+    def save_data(self, trigger_data: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
         """Saves the data to the rec_destination folder.
 
         Parameters
@@ -196,6 +196,8 @@ class VoiceField:
             Dictionary containing the data to save.
         freq_bin : int
             The frequency bin.
+        freq : float
+            The exact frequency.
         dba_bin : int
             The db(A) bin.
         """
@@ -215,7 +217,8 @@ class VoiceField:
                 with open(f"{directory}/meta.json", "w") as f:
                     json_object = json.dumps({
                         "frequency_bin": int(freq_bin - 1),
-                        "frequency": self.freq_bins_lb[freq_bin - 1],
+                        "bin_frequency": self.freq_bins_lb[freq_bin - 1],
+                        "exact_freq": freq,
                         "dba_bin": int(dba_bin - 1),
                         "dba": self.dba_bins_lb[dba_bin - 1],
                         "score": self.grid[dba_bin - 1][freq_bin - 1],
@@ -227,7 +230,7 @@ class VoiceField:
                 logging.error(f"Thread [{id}]: error saving data: {e}")
             finally:
                 logging.info(f"Thread [{id}]: releasing lock")
-        logging.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total} seconds.")
+        logging.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
 
     def add_trigger(self, freq: float, dba: float, score: float, trigger_data: dict) -> bool:
         """Adds a trigger point to the recorder. If the quality score is below the threshold, the trigger point will be
@@ -245,6 +248,7 @@ class VoiceField:
             Dictionary containing data coming from audio recoder instance allowing to save additional
             information on trigger.
         """
+        start = time.time()
         # if freq and/or dba are out of bounds
         if freq > self.freq_cutoff or dba > self.dba_cutoff:
             return False
@@ -255,7 +259,6 @@ class VoiceField:
         freq_bin = np.searchsorted(self.freq_bins_lb, freq)
         dba_bin = np.searchsorted(self.dba_bins_lb, dba)
 
-        logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}")
         self.emit_voice(freq_bin, dba_bin, freq, dba, score)
 
         if score < self.min_score:
@@ -267,19 +270,23 @@ class VoiceField:
             self.id += 1
             self.grid[dba_bin - 1][freq_bin - 1] = score
             self.__set_daq_trigger()
-            logging.info(f"+ {self.id} Grid entry added - score: {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, freq, dba_bin, self.id)
+            logging.info(f"VOICE_FIELD entry added - score: {score}, "
+                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_score_threshold] % better than of existing score
         if existing_score < score and score/existing_score - 1 > self.retrigger_score_threshold:
             self.id += 1
             self.grid[dba_bin - 1][freq_bin - 1] = score
             self.__set_daq_trigger()
-            logging.info(f"++ {self.id} Grid entry updated - score: {existing_score} -> {score}")
             self.emit_trigger(freq_bin, dba_bin, score)
-            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, dba_bin, self.id)
+            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, freq, dba_bin, self.id)
+            logging.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
+                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
+        logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
+                     f"runtime: {time.time() - start:.6f} seconds")
         return False
 
     def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:

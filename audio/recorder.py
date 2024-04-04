@@ -336,8 +336,6 @@ class Trigger(AudioRecorder):
             "dbaBinSize": dba_bin_size
         }
         logging.info(f"Successfully created trigger: {self.instance_settings}")
-        self.debug_time = {"total": [], "calc": {"total": [], "fft": [], "dom": [], "dba_weight": [], "score": []},
-                           "trigger": []}
         self.debug_num_runs = 0
         self.debug_inner_runs = 0
 
@@ -389,38 +387,23 @@ class Trigger(AudioRecorder):
             A tuple containing the modified input data and the status code.
         """
         # TODO: Check if emptying frames will lead to better results -> less overlap between trigger
-        start = time.time()
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
-            calc_time = time.time()
             score, dom_freq = calc_pitch_score(data, self.rate)
-            self.debug_time["calc"]["score"].append(time.time() - calc_time)
-            dba_time = time.time()
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
-            self.debug_time["calc"]["dba_weight"].append(time.time() - dba_time)
-            self.debug_time["calc"]["total"].append(time.time() - calc_time)
-            trig_time = time.time()
             is_trig = self.voice_field.add_trigger(dom_freq, dba_level, score,
                                                    trigger_data={"data": data, "sampling_rate": self.rate})
             if is_trig:
-                self.debug_time["trigger"].append(time.time() - trig_time)
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunksize),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunksize))
-        runtime = time.time() - start
-        self.debug_time["total"].append(runtime)
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self) -> None:
         """Stop the audio recording stream.
         """
         logging.info("Stopping trigger...")
-        print(f"Total runtime: {sum(self.debug_time['total']) / len(self.debug_time['total'])}")
-        print(f"...calc: {sum(self.debug_time['calc']['total']) / len(self.debug_time['calc']['total'])}")
-        print(f"......dba: {sum(self.debug_time['calc']['dba_weight']) / len(self.debug_time['calc']['dba_weight'])}")
-        print(f"......score: {sum(self.debug_time['calc']['score']) / len(self.debug_time['calc']['score'])}")
-        print(f"...trigger: {sum(self.debug_time['trigger']) / len(self.debug_time['trigger'])}")
         super().stop_stream()
         self.voice_field.pool.shutdown(wait=True)
         logging.info("Trigger stopped successfully.")
