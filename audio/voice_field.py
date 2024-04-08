@@ -79,6 +79,9 @@ class VoiceField:
         except nidaqmx.errors.DaqNotFoundError:
             logging.info("No NI-DAQmx installation found on this device. Continuing without...")
             return None
+        except nidaqmx.errors.DaqNotSupportedError:
+            logging.info("NI-DAQmx not supported on this device. Continuing without...")
+            return None
 
     @staticmethod
     def __build_file_name(freq_bin: int, dba_bin: int):
