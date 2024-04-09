@@ -9,7 +9,10 @@ from typing import Tuple, List, Optional, Union
 
 import nidaqmx
 import numpy as np
+import parselmouth
 import scipy.io.wavfile as wav
+
+from audio.processing.utility import measure_praat_stats
 
 
 class VoiceField:
@@ -187,13 +190,15 @@ class VoiceField:
         shutil.rmtree(self.rec_destination)
         os.makedirs(self.rec_destination)
 
-    def save_data(self, trigger_data: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
+    def save_data(self, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
         """Saves the data to the rec_destination folder.
 
         Parameters
         ----------
         trigger_data : dict
             Dictionary containing the data to save.
+        praat_stats : dict
+            Dictionary containing the praat statistics.
         freq_bin : int
             The frequency bin.
         freq : float
@@ -222,7 +227,8 @@ class VoiceField:
                         "dba_bin": int(dba_bin - 1),
                         "dba": self.dba_bins_lb[dba_bin - 1],
                         "score": self.grid[dba_bin - 1][freq_bin - 1],
-                    })
+                        **praat_stats
+                    }, indent=4)
                     f.write(json_object)
                 wav.write(f"{directory}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
                 logging.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
@@ -232,12 +238,14 @@ class VoiceField:
                 logging.info(f"Thread [{id}]: releasing lock")
         logging.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
 
-    def add_trigger(self, freq: float, dba: float, score: float, trigger_data: dict) -> bool:
+    def check_trigger(self, sound: parselmouth.Sound, freq: float, dba: float, score: float, trigger_data: dict) -> bool:
         """Adds a trigger point to the recorder. If the quality score is below the threshold, the trigger point will be
         added to the grid. If a socket is provided, the trigger point will be emitted to the server.
 
         Parameters
         ----------
+        sound: parselmouth.Sound
+            The sound object containing the audio data.
         freq : float
             The frequency of the trigger point.
         dba : float
@@ -267,27 +275,27 @@ class VoiceField:
         existing_score = self.grid[dba_bin - 1][freq_bin - 1]
         # add trigger if no previous entry exists
         if existing_score is None:
-            self.id += 1
-            self.grid[dba_bin - 1][freq_bin - 1] = score
-            self.__set_daq_trigger()
-            self.emit_trigger(freq_bin, dba_bin, score)
-            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, freq, dba_bin, self.id)
+            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logging.info(f"VOICE_FIELD entry added - score: {score}, "
                          f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_score_threshold] % better than of existing score
         if existing_score < score and score/existing_score - 1 > self.retrigger_score_threshold:
-            self.id += 1
-            self.grid[dba_bin - 1][freq_bin - 1] = score
-            self.__set_daq_trigger()
-            self.emit_trigger(freq_bin, dba_bin, score)
-            self.__submit_threadpool_task(self.save_data, trigger_data, freq_bin, freq, dba_bin, self.id)
+            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logging.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
                          f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
                      f"runtime: {time.time() - start:.6f} seconds")
         return False
+
+    def __add_trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
+        self.id += 1
+        self.grid[dba_bin - 1][freq_bin - 1] = score
+        self.__set_daq_trigger()
+        praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
+        self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
+        self.__submit_threadpool_task(self.save_data, trigger_data, praat_stats, freq_bin, freq, dba_bin, self.id)
 
     def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:
         """Emit a voice update to the server.
@@ -311,7 +319,7 @@ class VoiceField:
             "score": score
         })
 
-    def emit_trigger(self, freq_bin: int, dba_bin: int, score: float) -> None:
+    def emit_trigger(self, freq_bin: int, dba_bin: int, score: float, praat_stats: dict) -> None:
         """Emit a trigger to the server.
 
         Parameters
@@ -322,11 +330,14 @@ class VoiceField:
             The db(A) bin of the trigger.
         score : float
             The quality score of the trigger.
+        praat_stats : dict
+            The praat statistics of the trigger.
         """
         if self.socket is None:
             return
         self.socket.emit("trigger", {
             "freq_bin": int(freq_bin - 1),
             "dba_bin": int(dba_bin - 1),
-            "score": float(score)
+            "score": float(score),
+            "stats": {**praat_stats}
         })

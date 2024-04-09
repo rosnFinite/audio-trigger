@@ -37,24 +37,31 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     return abs(scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:])))
 
 
-def calc_pitch_score(data: np.ndarray, rate: int) -> Tuple[float, float]:
+def calc_pitch_score(data: Optional[np.ndarray] = None, rate: Optional[int] = None, sound: Optional[parselmouth.Sound] = None) -> Tuple[float, float]:
     """Calculates the pitch score of the provided audio data. The pitch score is a value between 0 and 1, where 1
     denotes a high pitch consistency and 0 a low pitch consistency. The pitch score is calculated by the standard
     deviation of the detected pitch values. The pitch value is the mean of the detected pitch values.
 
+    Either a parselmouth sound object or the audio data and rate must be provided.
+
     Parameters
     ----------
-    data : np.ndarray
+    data : Optional[np.ndarray]
         Numpy array of the recorded audio data.
-    rate : int
+    rate : Optional[int]
         Sampling rate of the provided audio data.
+    sound : Optional[parselmouth.Sound]
+        Parselmouth sound object.
 
     Returns
     -------
     Tuple[float, float]
         Tuple containing the pitch score and the mean pitch value.
     """
-    sound = parselmouth.Sound(data, sampling_frequency=rate)
+    if sound is None:
+        if data is None or rate is None:
+            raise ValueError("No data and rate provided. ")
+        sound = parselmouth.Sound(data, sampling_frequency=rate)
 
     # intensity score via standard deviation 1 = high consistency, 0 = low consistency over time
     intensity = sound.to_intensity(time_step=0.01)

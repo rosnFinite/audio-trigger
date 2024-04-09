@@ -5,6 +5,7 @@ import time
 from threading import Thread, Event
 from typing import List, Optional, Tuple, Callable
 
+import parselmouth
 import pyaudio
 import numpy as np
 import scipy.io.wavfile as wav
@@ -391,10 +392,11 @@ class Trigger(AudioRecorder):
         self.frames.append(frame)
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
-            score, dom_freq = calc_pitch_score(data, self.rate)
+            sound = parselmouth.Sound(data, sampling_frequency=self.rate)
+            score, dom_freq = calc_pitch_score(sound=sound)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
-            is_trig = self.voice_field.add_trigger(dom_freq, dba_level, score,
-                                                   trigger_data={"data": data, "sampling_rate": self.rate})
+            is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
+                                                     trigger_data={"data": data, "sampling_rate": self.rate})
             if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunksize),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunksize))

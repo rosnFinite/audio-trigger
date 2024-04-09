@@ -3,6 +3,7 @@ Collection of utility functions.
 """
 import functools
 
+import parselmouth
 from frozendict import frozendict
 
 
@@ -53,3 +54,46 @@ def freezeargs(func):
         return func(*args, **kwargs)
 
     return wrapped
+
+
+def measure_praat_stats(sound: parselmouth.Sound, fmin: float, fmax: float):
+    duration = parselmouth.praat.call(sound, "Get total duration")  # duration
+
+    pitch = parselmouth.praat.call(sound, "To Pitch", 0.0, fmin, fmax)  # create a praat pitch object
+    meanF = parselmouth.praat.call(pitch, "Get mean", 0, 0, "Hertz")  # get mean pitch
+    stdevF = parselmouth.praat.call(pitch, "Get standard deviation", 0, 0, "Hertz")  # get standard deviation
+
+    harmonicity = parselmouth.praat.call(sound, "To Harmonicity (cc)", 0.01, fmin, 0.1, 1.0)
+    hnr = parselmouth.praat.call(harmonicity, "Get mean", 0, 0)
+
+    pointProcess = parselmouth.praat.call(sound, "To PointProcess (periodic, cc)", fmin, fmax)
+    localJitter = parselmouth.praat.call(pointProcess, "Get jitter (local)", 0, 0, 0.0001, 0.02, 1.3)
+    localAbsoluteJitter = parselmouth.praat.call(pointProcess, "Get jitter (local, absolute)", 0, 0, 0.0001, 0.02, 1.3)
+    rapJitter = parselmouth.praat.call(pointProcess, "Get jitter (rap)", 0, 0, 0.0001, 0.02, 1.3)
+    ppq5Jitter = parselmouth.praat.call(pointProcess, "Get jitter (ppq5)", 0, 0, 0.0001, 0.02, 1.3)
+    ddpJitter = parselmouth.praat.call(pointProcess, "Get jitter (ddp)", 0, 0, 0.0001, 0.02, 1.3)
+    localShimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (local)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    localdbShimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (local_dB)", 0, 0, 0.0001, 0.02, 1.3,
+                                            1.6)
+    apq3Shimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (apq3)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    aqpq5Shimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (apq5)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    apq11Shimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (apq11)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+    ddaShimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (dda)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
+
+    return {
+        "duration": duration,
+        "meanF": meanF,
+        "stdevF": stdevF,
+        "hnr": hnr,
+        "localJitter": localJitter,
+        "localAbsoluteJitter": localAbsoluteJitter,
+        "rapJitter": rapJitter,
+        "ppq5Jitter": ppq5Jitter,
+        "ddpJitter": ddpJitter,
+        "localShimmer": localShimmer,
+        "localdbShimmer": localdbShimmer,
+        "apq3Shimmer": apq3Shimmer,
+        "aqpq5Shimmer": aqpq5Shimmer,
+        "apq11Shimmer": apq11Shimmer,
+        "ddaShimmer": ddaShimmer
+    }
