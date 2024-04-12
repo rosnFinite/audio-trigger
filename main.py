@@ -1,6 +1,7 @@
 import logging
 import multiprocessing
 import time
+import os
 
 from backend.server import run_server
 from backend.client import run_client
@@ -13,12 +14,13 @@ logging.basicConfig(
     filename='/backend/debug.log',
     filemode='w'
 )
+logger = logging.getLogger(__name__)
 
 if __name__ == "__main__":
     processes = []
     try:
         proc = multiprocessing.Process(target=run_file_watcher,
-                                       args=("C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\backend\\recordings",))
+                                       args=(os.path.join(os.getcwd(), "backend", "recordings"),))
         processes.append(proc)
         proc.start()
 
@@ -37,5 +39,5 @@ if __name__ == "__main__":
         for proc in processes:
             proc.terminate()
     except Exception as e:
-        logging.exception(e)
+        logger.exception(e)
 
