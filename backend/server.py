@@ -214,7 +214,7 @@ def on_settings(req_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug("Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
+    logger.debug(f"Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
     emit("changeSettings", req_settings, to="client_room", skip_sid=request.sid)
 
 
@@ -229,7 +229,7 @@ def on_settings_changed(updated_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug("Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
+    logger.debug(f"Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
     emit("settingsChanged", updated_settings, to="client_room", skip_sid=request.sid)
 
 
