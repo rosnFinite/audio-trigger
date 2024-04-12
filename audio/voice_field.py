@@ -13,6 +13,7 @@ import parselmouth
 import scipy.io.wavfile as wav
 
 from audio.processing.utility import measure_praat_stats
+from audio.daq_interface import DAQ_Device
 
 
 class VoiceField:
@@ -49,7 +50,7 @@ class VoiceField:
         self.min_score = min_score
         self.retrigger_score_threshold = retrigger_score_threshold
         self.socket = socket
-        self.daq = self.__check_for_daq()
+        self.daq = DAQ_Device(num_samples=1000, sample_rate=100000, analog_input_channels=["ai0"], digital_trig_channel="pfi5")
         self._file_lock = threading.Lock()
         self.id = 0
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -63,33 +64,37 @@ class VoiceField:
         logging.info(
             f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
 
-    @staticmethod
-    def __check_for_daq() -> Optional[nidaqmx.system.Device]:
-        """Check for a connected NI-DAQmx device.
-
+    def __create_data_dir(self, freq_bin: int, dba_bin: int) -> str:
+        """Creates directory to store data corresponding to provided grid cell.
+        
+        Parameters
+        ----------
+        freq_bin : int
+            Frequency bin of corresponding grid cell
+        dba_bin : int
+            Dezibel bin of corresponding grid cell
+        
         Returns
         -------
-        Optional[nidaqmx.system.Device]
-            The connected NI-DAQmx device or None if no device is connected.
+        str
+            Full path to the created directory for storing grid cell data.
         """
-        try:
-            if len(nidaqmx.system.System.local().devices) == 0:
-                logging.info("No DAQ-Board connected. Continuing without...")
-                return None
-            else:
-                logging.info(f"DAQ-Board {nidaqmx.system.System.local().devices[0]} connected.")
-                return nidaqmx.system.System.local().devices[0]
-        except nidaqmx.errors.DaqNotFoundError:
-            logging.info("No NI-DAQmx installation found on this device. Continuing without...")
-            return None
-        except nidaqmx.errors.DaqNotSupportedError:
-            logging.info("NI-DAQmx not supported on this device. Continuing without...")
-            return None
-
-    @staticmethod
-    def __build_file_name(freq_bin: int, dba_bin: int):
-        """Build the filename for storing artifacts corresponding to a specific grid cell."""
-        return f"{dba_bin}_{freq_bin}"
+        # build the path name for grid data folder
+        path = os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}")
+        
+        if os.path.exists(path):
+            # get all folders that start with the same pattern "dba_freq"
+            existing_cell_folders = []
+            with os.scandir(os.path.dirname(path)) as entries:
+                for entry in entries:
+                    # check if entry is directory and starts with same pattern 
+                    if entry.is_dir() and entry.name.startswith(f"{dba_bin}_{freq_bin}"):
+                        existing_cell_folders.append(entry.name)
+    
+            os.rename(path, os.path.join(os.path.dirname(path), f"{dba_bin}_{freq_bin}_{len(existing_cell_folders)}"))
+        
+        os.makedirs(path)
+        return path
 
     @staticmethod
     def __is_bounds_valid(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
@@ -172,18 +177,6 @@ class VoiceField:
             lower_bounds.append(lower_bounds[-1] + dba_bin_size)
         return lower_bounds
 
-    def __set_daq_trigger(self) -> None:
-        """Send a trigger signal to the DAQ device."""
-        if self.daq is None:
-            return
-        with nidaqmx.Task(new_task_name="AudioTrigger") as trig_task:
-            trig_task.do_channels.add_do_chan("/Dev1/PFI0")
-            trig_task.write(True)
-            trig_task.wait_until_done(timeout=1)
-            trig_task.write(False)
-            trig_task.stop()
-            logging.info("DAQ trigger signal send successfully.")
-
     def reset_grid(self) -> None:
         """Reset the grid to its initial state and deletes corresponding recordings.
         """
@@ -193,11 +186,13 @@ class VoiceField:
         shutil.rmtree(self.rec_destination)
         os.makedirs(self.rec_destination)
 
-    def save_data(self, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
+    def save_data(self, save_dir: str, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
         """Saves the data to the rec_destination folder.
 
         Parameters
         ----------
+        save_dir: str
+            Path to parent dictionary in which to store data.
         trigger_data : dict
             Dictionary containing the data to save.
         praat_stats : dict
@@ -211,18 +206,14 @@ class VoiceField:
         """
         start_total = time.time()
         logging.info(f"Thread [{id}]: starting update")
-        folder_name = self.__build_file_name(freq_bin - 1, dba_bin - 1)
         logging.info(f"Thread [{id}]: acquiring lock")
         with self._file_lock:
             try:
                 start_save = time.time()
-                directory = f"{self.rec_destination}/{folder_name}"
-                if not os.path.exists(directory):
-                    os.makedirs(directory)
-                file_path = f"{directory}/input_data.npy"
+                file_path = f"{save_dir}/input_data.npy"
                 with open(file_path, "wb") as f:
                     np.save(f, trigger_data["data"])
-                with open(f"{directory}/meta.json", "w") as f:
+                with open(f"{save_dir}/meta.json", "w") as f:
                     json_object = json.dumps({
                         "frequency_bin": int(freq_bin - 1),
                         "bin_frequency": self.freq_bins_lb[freq_bin - 1],
@@ -233,7 +224,7 @@ class VoiceField:
                         **praat_stats
                     }, indent=4)
                     f.write(json_object)
-                wav.write(f"{directory}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
+                wav.write(f"{save_dir}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
                 logging.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
             except Exception as e:
                 logging.error(f"Thread [{id}]: error saving data: {e}")
@@ -295,10 +286,11 @@ class VoiceField:
     def __add_trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
         self.id += 1
         self.grid[dba_bin - 1][freq_bin - 1] = score
-        self.__set_daq_trigger()
+        data_dir = self.__create_data_dir(freq_bin, dba_bin)
+        self.daq.start_acquisition(save_dir=data_dir)
         praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
         self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
-        self.__submit_threadpool_task(self.save_data, trigger_data, praat_stats, freq_bin, freq, dba_bin, self.id)
+        self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin, self.id)
 
     def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:
         """Emit a voice update to the server.
