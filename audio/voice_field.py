@@ -184,11 +184,22 @@ class VoiceField:
         return lower_bounds
 
     def reset_grid(self) -> None:
-        """Reset the grid to its initial state and deletes corresponding recordings.
+        """Resets the grid to its initial state and creates a new recording directory. The new directory will use the
+        name of the previous directory with an incremented number at the end.
+        <prefix>_<date>_<time> -> <prefix>_<date>_<time>_<version> where version is the incremented number.
         """
         self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
-        # removing stored recordings and creating new folder
-        shutil.rmtree(self.rec_destination)
+        # creating new recording directory with incremented version number
+        dirname = os.path.dirname(self.rec_destination)
+        basename = os.path.basename(self.rec_destination)
+        basename_components = basename.split("_")
+        if len(basename_components) < 3:
+            pass
+        elif len(basename_components) == 3:
+            basename_components.append("1")
+        else:
+            basename_components[-1] = str(int(basename_components[-1]) + 1)
+        self.rec_destination = os.path.join(dirname, "_".join(basename_components))
         os.makedirs(self.rec_destination)
         logger.info("Voice field grid reset.")
 
