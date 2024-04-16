@@ -389,7 +389,9 @@ class Trigger(AudioRecorder):
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
             sound = parselmouth.Sound(data, sampling_frequency=self.rate)
-            score, dom_freq = calc_pitch_score(sound=sound)
+            score, dom_freq = calc_pitch_score(sound=sound,
+                                               freq_floor=self.voice_field.freq_bins_lb[0],
+                                               freq_ceiling=self.voice_field.freq_cutoff)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
             is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
                                                      trigger_data={"data": data, "sampling_rate": self.rate})

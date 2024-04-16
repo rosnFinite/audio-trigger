@@ -7,7 +7,6 @@ import threading
 import time
 from typing import Tuple, List, Optional, Union
 
-import nidaqmx
 import numpy as np
 import parselmouth
 import scipy.io.wavfile as wav
@@ -153,9 +152,11 @@ class VoiceField:
                             f"Got {freq_bounds}")
             raise ValueError("Provided frequency bounds are not valid.")
         # arbitrary start point for semitone calculations
-        lower_bounds = [min(freq_bounds)]
-        while lower_bounds[-1] < max(freq_bounds):
-            lower_bounds.append(round(np.power(2, semitone_bin_size / 12) * lower_bounds[-1], 3))
+        lower_bounds = []
+        current_freq = min(freq_bounds)
+        while current_freq < max(freq_bounds):
+            lower_bounds.append(current_freq)
+            current_freq = round(np.power(2, semitone_bin_size / 12) * lower_bounds[-1], 3)
         return lower_bounds
 
     def __calc_dba_lower_bounds(self, dba_bin_size: int, dba_bounds: Tuple[int, int]) -> List[int]:
@@ -221,12 +222,12 @@ class VoiceField:
                     np.save(f, trigger_data["data"])
                 with open(f"{save_dir}/meta.json", "w") as f:
                     json_object = json.dumps({
-                        "frequency_bin": int(freq_bin - 1),
-                        "bin_frequency": self.freq_bins_lb[freq_bin - 1],
+                        "frequency_bin": int(freq_bin),
+                        "bin_frequency": self.freq_bins_lb[freq_bin],
                         "exact_freq": freq,
-                        "dba_bin": int(dba_bin - 1),
-                        "dba": self.dba_bins_lb[dba_bin - 1],
-                        "score": self.grid[dba_bin - 1][freq_bin - 1],
+                        "dba_bin": int(dba_bin),
+                        "dba": self.dba_bins_lb[dba_bin],
+                        "score": self.grid[dba_bin][freq_bin],
                         **praat_stats
                     }, indent=4)
                     f.write(json_object)
@@ -265,15 +266,15 @@ class VoiceField:
             return False
 
         # find corresponding freq and db bins e.g. [1,3,5,7], 4 -> 2, therefor -1 to reference the correct lower bound
-        freq_bin = np.searchsorted(self.freq_bins_lb, freq)
-        dba_bin = np.searchsorted(self.dba_bins_lb, dba)
+        freq_bin = np.searchsorted(self.freq_bins_lb, freq) - 1
+        dba_bin = np.searchsorted(self.dba_bins_lb, dba) - 1
 
         self.emit_voice(freq_bin, dba_bin, freq, dba, score)
 
         if score < self.min_score:
             return False
 
-        existing_score = self.grid[dba_bin - 1][freq_bin - 1]
+        existing_score = self.grid[dba_bin][freq_bin]
         # add trigger if no previous entry exists
         if existing_score is None:
             self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
@@ -292,7 +293,7 @@ class VoiceField:
 
     def __add_trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
         self.id += 1
-        self.grid[dba_bin - 1][freq_bin - 1] = score
+        self.grid[dba_bin][freq_bin ] = score
         data_dir = self.__create_data_dir(freq_bin, dba_bin)
         self.daq.start_acquisition(save_dir=data_dir)
         praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
@@ -315,8 +316,8 @@ class VoiceField:
         if self.socket is None:
             return
         self.socket.emit("voice", {
-            "freq_bin": int(freq_bin - 1),
-            "dba_bin": int(dba_bin - 1),
+            "freq_bin": int(freq_bin),
+            "dba_bin": int(dba_bin),
             "freq": freq,
             "dba": dba,
             "score": score
@@ -339,8 +340,8 @@ class VoiceField:
         if self.socket is None:
             return
         self.socket.emit("trigger", {
-            "freq_bin": int(freq_bin - 1),
-            "dba_bin": int(dba_bin - 1),
+            "freq_bin": int(freq_bin),
+            "dba_bin": int(dba_bin),
             "score": float(score),
             "stats": {**praat_stats}
         })

@@ -37,7 +37,11 @@ def calc_quality_score(data: Optional[np.ndarray] = None,
     return abs(scaled[amp] - (np.sum(scaled[:amp]) + np.sum(scaled[amp + 1:])))
 
 
-def calc_pitch_score(data: Optional[np.ndarray] = None, rate: Optional[int] = None, sound: Optional[parselmouth.Sound] = None) -> Tuple[float, float]:
+def calc_pitch_score(data: Optional[np.ndarray] = None,
+                     rate: Optional[int] = None,
+                     sound: Optional[parselmouth.Sound] = None,
+                     freq_floor: Optional[float] = None,
+                     freq_ceiling: Optional[float] = None) -> Tuple[float, float]:
     """Calculates the pitch score of the provided audio data. The pitch score is a value between 0 and 1, where 1
     denotes a high pitch consistency and 0 a low pitch consistency. The pitch score is calculated by the standard
     deviation of the detected pitch values. The pitch value is the mean of the detected pitch values.
@@ -52,6 +56,10 @@ def calc_pitch_score(data: Optional[np.ndarray] = None, rate: Optional[int] = No
         Sampling rate of the provided audio data.
     sound : Optional[parselmouth.Sound]
         Parselmouth sound object.
+    freq_floor : Optional[float]
+        Lower frequency limit for pitch detection. [required for sound object]
+    freq_ceiling : Optional[float]
+        Upper frequency limit for pitch detection. [required for sound object]
 
     Returns
     -------
@@ -62,6 +70,9 @@ def calc_pitch_score(data: Optional[np.ndarray] = None, rate: Optional[int] = No
         if data is None or rate is None:
             raise ValueError("No data and rate provided. ")
         sound = parselmouth.Sound(data, sampling_frequency=rate)
+    else:
+        if freq_floor is None or freq_ceiling is None:
+            raise ValueError("No frequency bounds provided. ")
 
     # intensity score via standard deviation 1 = high consistency, 0 = low consistency over time
     intensity = sound.to_intensity(time_step=0.01)
@@ -69,7 +80,7 @@ def calc_pitch_score(data: Optional[np.ndarray] = None, rate: Optional[int] = No
     intensity_score = 1 / (1+np.std(intensity.values))
 
     # frequency score
-    pitch = sound.to_pitch(time_step=0.01)
+    pitch = sound.to_pitch(time_step=0.01, pitch_floor=freq_floor, pitch_ceiling=freq_ceiling)
     pitch_values = [val[0] for val in pitch.selected_array]
     pitch_std = np.std(pitch_values)
     pitch_score = 1 / (pitch_std+1)
