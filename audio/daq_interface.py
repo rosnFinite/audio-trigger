@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import List
+from typing import List, Optional
 import nidaqmx
 import nidaqmx.constants
 import nidaqmx.error_codes
@@ -24,12 +24,12 @@ class DAQ_Device:
         pass
 
     @staticmethod
-    def __select_daq(device_id: str = None) -> nidaqmx.system.Device:
+    def __select_daq(device_id: str = None) -> Optional[nidaqmx.system.Device]:
         """Selects a connected NI-DAQmx device either by providing its id or by
         auto-detecting a device if no device_id is given.
         Auto-detection will select the first device in the list of connected devices per default.
 
-        Will return None, without a thrown exception if:
+        Will return None, without a thrown exception IF:
         - No DAQ device is connected to the system (missing USB link)
         - No NI-DAQmx installation was found on the system (missing driver)
         - NI-DAQms is not supported on this system (e.g. macOS)
