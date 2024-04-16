@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+import time
 from typing import Tuple, Dict, Any, List
 
 from flask import Flask, request, send_from_directory, jsonify, Response
@@ -302,7 +303,12 @@ def run_server():
     Run the web server on port 5001.
     """
     logger.info("Starting server on port 5001...")
-    server.run(app, port=5001, debug=False, log_output=False)
+    try:
+        server.run(app, port=5001, debug=False, log_output=False)
+    except OSError:
+        logger.critical("Port 5001 already in use. Server could not be started. Retrying after 10 seconds...")
+        time.sleep(10)
+        run_server()
 
 
 if __name__ == '__main__':
