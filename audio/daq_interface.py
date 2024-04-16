@@ -9,7 +9,7 @@ import nidaqmx.system
 import numpy as np
 
 
-class DAQ_Device():
+class DAQ_Device:
     def __init__(self,
                  sample_rate: int,
                  num_samples: int, 
@@ -24,14 +24,15 @@ class DAQ_Device():
         pass
 
     @staticmethod
-    def __select_daq(device_id: str = None):
+    def __select_daq(device_id: str = None) -> nidaqmx.system.Device:
         """Selects a connected NI-DAQmx device either by providing its id or by
-        auto detecting a device if no device_id is given.
+        auto-detecting a device if no device_id is given.
+        Auto-detection will select the first device in the list of connected devices per default.
 
-        Will return None, without a thrown excpetion if:
+        Will return None, without a thrown exception if:
         - No DAQ device is connected to the system (missing USB link)
-        - No NI-DAQmx installtion was found on the system (missing driver)
-        - NI-DAQms is not supported on this system (e.g. MacOS)
+        - No NI-DAQmx installation was found on the system (missing driver)
+        - NI-DAQms is not supported on this system (e.g. macOS)
         """
         try:
             # check if a daq device is connected
@@ -56,7 +57,17 @@ class DAQ_Device():
             logging.critical("NI-DAQmx not supported on this device. Continuing without...")
             return None
 
-    def start_acquisition(self, save_dir: str):
+    def start_acquisition(self, save_dir: str) -> None:
+        """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
+        Provided 'save_dir' must be a valid path to a directory where the data will be saved. Filename will be
+        'measurements.csv'.
+        Full path -> 'save_dir'/measurements.csv
+
+        Parameters
+        ----------
+        save_dir : str
+            Parent directory path where the acquired data will be saved as 'measurements.csv'.
+        """
         if self.device is None:
             return
         with nidaqmx.Task() as task_in, nidaqmx.Task() as task_trig:
