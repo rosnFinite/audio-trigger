@@ -8,6 +8,7 @@ from .EventHandler import start_watchdog
 from .utils import create_visualizations
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def run_file_watcher(path_to_watch: str):

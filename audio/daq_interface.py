@@ -8,13 +8,16 @@ import nidaqmx.errors
 import nidaqmx.system
 import numpy as np
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 class DAQ_Device:
     def __init__(self,
                  sample_rate: int,
-                 num_samples: int, 
-                 analog_input_channels: List[str], 
-                 digital_trig_channel: str, 
+                 num_samples: int,
+                 analog_input_channels: List[str],
+                 digital_trig_channel: str,
                  device_id: str = None):
         self.device = self.__select_daq(device_id)
         self.analog_input_channels = analog_input_channels
@@ -37,24 +40,24 @@ class DAQ_Device:
         try:
             # check if a daq device is connected
             if len(nidaqmx.system.System.local().devices) == 0:
-                logging.critical("No DAQ device connected. Continuing without...")
+                logger.critical("No DAQ device connected. Continuing without...")
                 return None
             device_list = list(nidaqmx.system.System.local().devices)
-            logging.info(f"{len(device_list)} DAQ devices connected")
+            logger.info(f"{len(device_list)} DAQ devices connected")
             # auto select first device in list if no specific ID was provided
             if device_id is None:
                 device = device_list[0]
-                logging.info(f"Device: {device} was auto selected.")
+                logger.info(f"Device: {device} was auto selected.")
                 return device
             else:
                 device = device_list[device_list.index(device_id)]
-                logging.info(f"Device: {device} was manually selected.")
+                logger.info(f"Device: {device} was manually selected.")
                 return device
         except nidaqmx.errors.DaqNotFoundError:
-            logging.critical("No NI-DAQmx installation found on this system. Continuing without...")
+            logger.critical("No NI-DAQmx installation found on this system. Continuing without...")
             return None
         except nidaqmx.errors.DaqNotSupportedError:
-            logging.critical("NI-DAQmx not supported on this device. Continuing without...")
+            logger.critical("NI-DAQmx not supported on this device. Continuing without...")
             return None
 
     def start_acquisition(self, save_dir: str) -> None:
@@ -74,7 +77,7 @@ class DAQ_Device:
             # configure analog input channels
             for ai_channel in self.analog_input_channels:
                 task_in.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
-            
+
             # timing for analog task
             task_in.timing.cfg_samp_clk_timing(
                 rate=self.sample_rate,

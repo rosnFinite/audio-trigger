@@ -8,12 +8,13 @@ import numpy as np
 plot_lock = threading.Lock()
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 def create_visualizations(get_event):
     start = time.time()
-    logger.debug(f"Creating visualizations for {get_event['dir_path']}, Identifier: {get_event['id']}...")
-    logger.debug(f"Plotting waveform for {get_event['dir_path']}...")
+    logger.info(f"Creating visualizations for {get_event['dir_path']}, Identifier: {get_event['id']}...")
+    logger.info(f"Plotting waveform for {get_event['dir_path']}...")
 
     sound = get_event["parsel_sound"]
     parent_dir = get_event["dir_path"]
@@ -31,7 +32,6 @@ def create_visualizations(get_event):
         print(sound, file=f)
         print(pitch, file=f)
         print(intensity, file=f)
-    logger.debug(f"TIME: {time.time() - start}")
 
 
 def plot_waveform(data, location):
@@ -41,7 +41,7 @@ def plot_waveform(data, location):
     plt.xlabel("Zeit [s]")
     plt.ylabel("Amplitude")
     plt.savefig(f"{location}/waveform.png")
-    logger.debug(f"Waveform plot saved to {location}\\waveform.png")
+    logger.info(f"Waveform plot saved to {location}\\waveform.png")
     plt.close()
 
 
@@ -65,5 +65,5 @@ def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
 
     plt.xlim([sound.xmin, sound.xmax])
     plt.savefig(f"{location}/spectrogram_intensity.png")
-    logger.debug(f"Spectrogram and intensity plot saved to {location}\\spectrogram_intensity.png")
+    logger.info(f"Spectrogram and intensity plot saved to {location}\\spectrogram_intensity.png")
     plt.close()

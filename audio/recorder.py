@@ -16,12 +16,8 @@ from .voice_field import VoiceField
 from .processing.db import get_dba_level
 from .processing.scoring import calc_pitch_score
 
-logging.basicConfig(
-    format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
-    level=logging.DEBUG,
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class AudioRecorder:
@@ -122,7 +118,7 @@ class AudioRecorder:
         for i in range(0, info.get('deviceCount')):
             if (self.p.get_device_info_by_host_api_device_index(0, i).get('maxInputChannels')) > 0:
                 devices.append(self.p.get_device_info_by_host_api_device_index(0, i).get('name'))
-        logging.info("Recording devices loaded successfully.")
+        logger.info("Recording devices loaded successfully.")
         return devices
 
     def __recording_callback(self, input_data: bytes, frame_count: int, time_info: dict, flags: int) -> Tuple[
@@ -187,9 +183,9 @@ class AudioRecorder:
 
         """
         if self.stream_thread_is_running:
-            logging.info("Stream is already running.")
+            logger.info("Stream is already running.")
             return
-        logging.info("Starting audio stream thread...")
+        logger.info("Starting audio stream thread...")
         if input_device_index is None and self.recording_device is None:
             raise ValueError("No input device index provided.")
         if input_device_index is not None:
@@ -200,20 +196,20 @@ class AudioRecorder:
         self.stream_thread = Thread(target=self.__stream_task,
                                     args=(self.recording_device, self.__recording_callback if cb is None else cb))
         self.stream_thread.start()
-        logging.info("Audio stream started successfully.")
+        logger.info("Audio stream started successfully.")
 
     def stop_stream(self) -> None:
         """Stop the audio recording stream.
         """
         if not self.stream_thread_is_running:
-            logging.info("Stream is not currently running.")
+            logger.info("Stream is not currently running.")
             return
-        logging.info("Stopping audio stream thread...")
+        logger.info("Stopping audio stream thread...")
         if self.stream_thread:
             self.stop_event.set()
             self.stream_thread.join()
         self.stream_thread_is_running = False
-        logging.info("Audio stream stopped successfully.")
+        logger.info("Audio stream stopped successfully.")
 
     def stop_stream_and_save_wav(self, parent_dir: str) -> None:
         """Stop the audio recording stream and save the recorded audio buffer as a WAV file.
@@ -225,10 +221,10 @@ class AudioRecorder:
             The path to save the WAV file.
         """
         self.stop_stream()
-        logging.info("Saving recorded audio buffer...")
+        logger.info("Saving recorded audio buffer...")
         location = f"{parent_dir}/out.wav"
         wav.write(location, self.rate, self.get_audio_data())
-        logging.info(f"Audio buffer saved as {location}")
+        logger.info(f"Audio buffer saved to {location}")
 
     def terminate(self) -> None:
         """Terminate the PyAudio instance.
@@ -294,7 +290,7 @@ class Trigger(AudioRecorder):
                  rate: int = 44100,
                  chunksize: int = 1024,
                  socket: Optional[socketio.Client] = None):
-        logging.info(f"Number of channels: {channels}")
+        logger.info(f"Number of channels: {channels}")
         super().__init__(buffer_size, rate, channels, chunksize)
         self.min_score = min_score
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
@@ -305,15 +301,15 @@ class Trigger(AudioRecorder):
         self.socket = socket
         if self.socket is not None:
             if self.socket.connected:
-                logging.info("Websocket connected to trigger.")
+                logger.info("Websocket connection established.")
             else:
-                logging.info("SocketIO client without connection to server provided. Try to connect to default url "
-                             "'http://localhost:5001'...")
+                logger.warning("SocketIO client without connection to server provided. Try to connect to default url "
+                               "'http://localhost:5001'...")
                 try:
                     self.socket.connect("http://localhost:5001")
-                    logging.info("Websocket connection to default server successfully established.")
+                    logger.info("Websocket connection to default server successfully established.")
                 except Exception:
-                    logging.info("Websocket connection to default server failed.")
+                    logger.critical("Websocket connection to default server failed.")
         self.voice_field = VoiceField(
             rec_destination=self.rec_destination,
             semitone_bin_size=semitone_bin_size,
@@ -336,7 +332,7 @@ class Trigger(AudioRecorder):
             "dbaBounds": dba_bounds,
             "dbaBinSize": dba_bin_size
         }
-        logging.info(f"Successfully created trigger: {self.instance_settings}")
+        logger.info(f"Successfully created trigger: {self.instance_settings}")
         self.debug_num_runs = 0
         self.debug_inner_runs = 0
 
@@ -357,10 +353,10 @@ class Trigger(AudioRecorder):
         dba_calib_file : str
             The path to the file containing the calibration factors.
         """
-        logging.info("Loading calibration factors...")
+        logger.info("Loading calibration factors...")
         with open(dba_calib_file) as f:
             corr_factors = json.load(f)
-        logging.info("Calibration factors successfully loaded.")
+        logger.info("Calibration factors successfully loaded.")
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
     def start_trigger(self, input_device_index: Optional[int] = None) -> None:
@@ -405,10 +401,10 @@ class Trigger(AudioRecorder):
     def stop_trigger(self) -> None:
         """Stop the audio recording stream.
         """
-        logging.info("Stopping trigger...")
+        logger.info("Stopping trigger...")
         super().stop_stream()
         self.voice_field.pool.shutdown(wait=True)
-        logging.info("Trigger stopped successfully.")
+        logger.info("Trigger stopped successfully.")
 
 
 if __name__ == "__main__":

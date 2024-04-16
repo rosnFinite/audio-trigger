@@ -10,6 +10,7 @@ from flask_cors import CORS
 from audio.recorder import AudioRecorder
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 file_handler = logging.FileHandler(os.path.join(os.getcwd(), "logs", "server.log"), mode="w")
 file_handler.setFormatter(logging.Formatter('%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s'))
 logger.addHandler(file_handler)
@@ -56,11 +57,10 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     tuple
         A tuple containing a dictionary with the available devices and an integer status code.
     """
-    logger.debug("GET request for available recording devices...")
+    logger.info(f"GET /audio-client/devices received.")
     device_list = []
     for idx, device in enumerate(AudioRecorder().recording_devices):
         device_list.append({"id": str(idx), "name": device})
-    logger.debug(f"Return available devices: {device_list}")
     return {"devices": device_list}, 200
 
 
@@ -88,7 +88,7 @@ def get_logs(log: str) -> tuple[dict[str, str], int] | tuple[Response, int]:
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/<img>", methods=["GET"])
-def get_image(parent_dir: str, sub_dir: str, img: str) -> Tuple[Response, int]:
+def get_image(parent_dir: str, sub_dir: str, img: str) -> tuple[Response, int] | tuple[dict[str, str], int]:
     """Handle GET request for images in the recordings directory either by providing the correct path or the freq/dba
     bin equivalent.
 
@@ -96,20 +96,20 @@ def get_image(parent_dir: str, sub_dir: str, img: str) -> Tuple[Response, int]:
     Which would be equivalent to providing the path /api/recordings/[parent]/35_55/[file] when 35 and 55 are the
     corresponding dba/freq values.
     """
-    logger.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/{img}")
+    logger.info(f"GET /recordings/{parent_dir}/{sub_dir}/{img} received.")
     if img.endswith(".jpg") or img.endswith(".png"):
-        logger.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} sent successfully.")
         return send_from_directory("recordings", f"{parent_dir}/{sub_dir}/{img}"), 200
     else:
-        logger.debug(f"File: /recordings/{parent_dir}/{sub_dir}/{img} not allowed to be sent. Invalid file extension.")
+        logger.critical(f"[GET /recordings/{parent_dir}/{sub_dir}/{img}] Invalid file extension.")
         return {"message": "Provided file extension is not allowed"}, 406
 
 
 @app.route("/api/recordings/<parent_dir>/<sub_dir>/parsel", methods=["GET"])
-def get_parselmouth_stats(parent_dir: str, sub_dir: str) -> Tuple[Response, int]:
+def get_parselmouth_stats(parent_dir: str, sub_dir: str) -> tuple[dict[str, str], int] | tuple[Response, int]:
     # check if file exists
-    logger.debug(f"GET request for file: /recordings/{parent_dir}/{sub_dir}/parsel")
+    logger.info(f"GET /recordings/{parent_dir}/{sub_dir}/parsel received.")
     if not os.path.exists(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")):
+        logger.critical(f"GET /recordings/{parent_dir}/{sub_dir}/parsel File not found.")
         return {"message": "File not found"}, 404
     with open(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")) as f:
         data = f.read()
@@ -121,7 +121,7 @@ def connected():
     """This function is called when a client connects to the server.
     It prints the client's session ID.
     """
-    logger.debug(f"Client connected: {request.sid}")
+    logger.info(f"Client connected: {request.sid}")
 
 
 @server.on("disconnect")
@@ -129,7 +129,6 @@ def disconnected() -> None:
     """This function is called when a client disconnects from the server.
     Will update list of connected clients, emitting the updated list to all clients.
     """
-    logger.debug(f"Gracefully disconnecting client: {request.sid}")
     # TODO: remove after testing
     if len(this.connected_clients) == 0:
         return
@@ -139,7 +138,7 @@ def disconnected() -> None:
             this.connected_clients.pop(idx)
             leave_room("client_room", request.sid)
             emit("clients", this.connected_clients, broadcast=True)
-    logger.debug(f"Client: {request.sid} disconnected successfully.")
+    logger.info(f"Client: {request.sid} disconnected.")
 
 
 @server.on("registerClient")
@@ -154,7 +153,7 @@ def on_register_client(data: dict) -> None:
     data: dict
         The data received from the client. Dictionary containing the client's type "type" and session ID "sid".
     """
-    logger.debug(f"Received register event from sid: {request.sid} with data: {data}")
+    logger.info(f"Received register event from sid: {request.sid} with data: {data}")
     # check if another client with same type is already connected
     for client in this.connected_clients:
         if client["type"] == data["type"]:
@@ -166,7 +165,7 @@ def on_register_client(data: dict) -> None:
     this.connected_clients.append({"sid": request.sid, "type": data["type"]})
     # add client to 'client_room'
     join_room("client_room", request.sid)
-    logger.debug(f"client registered: {request.sid}, emitting updated connected_clients list to 'clients'...")
+    logger.info(f"Client: {request.sid} registered, emitting updated connected_clients list to 'clients'...")
     emit("clients", this.connected_clients, broadcast=True)
 
 
@@ -183,7 +182,7 @@ def handle_grid_update(data: dict) -> None:
     # only registered clients can emit events
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received trigger event from sid:{request.sid} with data: {data}")
+    logger.info(f"Received trigger event from sid:{request.sid} with data: {data}")
     emit("trigger", data, to="client_room", skip_sid=request.sid)
 
 
@@ -198,7 +197,7 @@ def handle_voice_update(data: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received voice data update event from sid: {request.sid} with data: {data}")
+    logger.info(f"Received voice data update event from sid: {request.sid} with data: {data}")
     emit("voice", data, to="client_room", skip_sid=request.sid)
 
 
@@ -214,7 +213,7 @@ def on_settings(req_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
+    logger.info(f"Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
     emit("changeSettings", req_settings, to="client_room", skip_sid=request.sid)
 
 
@@ -229,7 +228,7 @@ def on_settings_changed(updated_settings: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
+    logger.info(f"Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
     emit("settingsChanged", updated_settings, to="client_room", skip_sid=request.sid)
 
 
@@ -246,7 +245,7 @@ def on_change_status(action: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received change status event from sid:{request.sid} with requested status: {action}")
+    logger.info(f"Received change status event from sid:{request.sid} with requested status: {action}")
     emit("changeStatus", action, to="client_room", skip_sid=request.sid)
 
 
@@ -262,7 +261,7 @@ def on_status_changed(updated_status: dict) -> None:
     if not check_registration(request.sid):
         return
     print("status change fulfilled")
-    logger.debug(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
+    logger.info(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
     emit("statusChanged", updated_status, to="client_room", skip_sid=request.sid)
 
 
@@ -278,7 +277,7 @@ def on_start_trigger(device_idx: int) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received start trigger event from sid: {request.sid} with device index: {device_idx}")
+    logger.info(f"Received start trigger event from sid: {request.sid} with device index: {device_idx}")
     emit("startTrigger", device_idx, to="client_room", skip_sid=request.sid)
 
 
@@ -294,7 +293,7 @@ def on_remove_recording(grid_location: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    logger.debug(f"Received remove recording event from sid: {request.sid} with grid location: {grid_location}")
+    logger.info(f"Received remove recording event from sid: {request.sid} with grid location: {grid_location}")
     emit("removeRecording", grid_location, to="client_room", skip_sid=request.sid)
 
 
@@ -302,7 +301,7 @@ def run_server():
     """
     Run the web server on port 5001.
     """
-    logger.debug("Starting server on port 5001...")
+    logger.info("Starting server on port 5001...")
     server.run(app, port=5001, debug=False, log_output=False)
 
 

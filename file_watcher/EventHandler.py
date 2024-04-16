@@ -8,6 +8,7 @@ from watchdog.events import PatternMatchingEventHandler, FileSystemEvent
 from watchdog.observers import Observer
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class ClientRecordingsFileHandler(PatternMatchingEventHandler):

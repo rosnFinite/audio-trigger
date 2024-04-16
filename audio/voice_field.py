@@ -15,6 +15,9 @@ import scipy.io.wavfile as wav
 from audio.processing.utility import measure_praat_stats
 from audio.daq_interface import DAQ_Device
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
 
 class VoiceField:
     """
@@ -37,6 +40,7 @@ class VoiceField:
     socket : Optional
         The socket object for emitting voice updates. Defaults to None.
     """
+
     def __init__(self,
                  rec_destination: str,
                  semitone_bin_size: int = 2,
@@ -50,7 +54,8 @@ class VoiceField:
         self.min_score = min_score
         self.retrigger_score_threshold = retrigger_score_threshold
         self.socket = socket
-        self.daq = DAQ_Device(num_samples=1000, sample_rate=100000, analog_input_channels=["ai0"], digital_trig_channel="pfi5")
+        self.daq = DAQ_Device(num_samples=1000, sample_rate=100000, analog_input_channels=["ai0"],
+                              digital_trig_channel="pfi5")
         self._file_lock = threading.Lock()
         self.id = 0
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -61,7 +66,7 @@ class VoiceField:
         self.dba_cutoff: float = self.dba_bins_lb[-1] + dba_bin_size
         # Creation of the grid
         self.grid: List[List[Optional[float]]] = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
-        logging.info(
+        logger.info(
             f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
 
     def __create_data_dir(self, freq_bin: int, dba_bin: int) -> str:
@@ -81,7 +86,7 @@ class VoiceField:
         """
         # build the path name for grid data folder
         path = os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}")
-        
+
         if os.path.exists(path):
             # get all folders that start with the same pattern "dba_freq"
             existing_cell_folders = []
@@ -90,9 +95,9 @@ class VoiceField:
                     # check if entry is directory and starts with same pattern 
                     if entry.is_dir() and entry.name.startswith(f"{dba_bin}_{freq_bin}"):
                         existing_cell_folders.append(entry.name)
-    
+
             os.rename(path, os.path.join(os.path.dirname(path), f"{dba_bin}_{freq_bin}_{len(existing_cell_folders)}"))
-        
+
         os.makedirs(path)
         return path
 
@@ -121,9 +126,9 @@ class VoiceField:
         try:
             self.pool.submit(task, *args)
         except RuntimeError:
-            logging.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
-                            "error: Cause by stopping and restarting same trigger instance. Reinitializing "
-                            "threadpool...")
+            logger.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
+                           "error: Cause by stopping and restarting same trigger instance. Reinitializing "
+                           "threadpool...")
             self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
             self.pool.submit(task, *args)
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
@@ -144,8 +149,8 @@ class VoiceField:
             The lower bounds of the frequency bins.
         """
         if not self.__is_bounds_valid(freq_bounds):
-            logging.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
-                             f"Got {freq_bounds}")
+            logger.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
+                            f"Got {freq_bounds}")
             raise ValueError("Provided frequency bounds are not valid.")
         # arbitrary start point for semitone calculations
         lower_bounds = [min(freq_bounds)]
@@ -169,7 +174,7 @@ class VoiceField:
             The lower bounds of the db(A) bins.
         """
         if not self.__is_bounds_valid(dba_bounds):
-            logging.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
+            logger.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
                              f"Got {dba_bounds}")
             raise ValueError("Provided db(A) bounds are not valid.")
         lower_bounds = [min(dba_bounds)]
@@ -180,13 +185,14 @@ class VoiceField:
     def reset_grid(self) -> None:
         """Reset the grid to its initial state and deletes corresponding recordings.
         """
-        logging.debug("GRID resetted")
         self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
         # removing stored recordings and creating new folder
         shutil.rmtree(self.rec_destination)
         os.makedirs(self.rec_destination)
+        logger.info("Voice field grid reset.")
 
-    def save_data(self, save_dir: str, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int, id: int) -> None:
+    def save_data(self, save_dir: str, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int,
+                  id: int) -> None:
         """Saves the data to the rec_destination folder.
 
         Parameters
@@ -205,8 +211,8 @@ class VoiceField:
             The db(A) bin.
         """
         start_total = time.time()
-        logging.info(f"Thread [{id}]: starting update")
-        logging.info(f"Thread [{id}]: acquiring lock")
+        logger.info(f"Thread [{id}]: starting update")
+        logger.info(f"Thread [{id}]: acquiring lock")
         with self._file_lock:
             try:
                 start_save = time.time()
@@ -225,14 +231,15 @@ class VoiceField:
                     }, indent=4)
                     f.write(json_object)
                 wav.write(f"{save_dir}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
-                logging.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
+                logger.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
             except Exception as e:
-                logging.error(f"Thread [{id}]: error saving data: {e}")
+                logger.error(f"Thread [{id}]: error saving data: {e}")
             finally:
-                logging.info(f"Thread [{id}]: releasing lock")
-        logging.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
+                logger.info(f"Thread [{id}]: releasing lock")
+        logger.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
 
-    def check_trigger(self, sound: parselmouth.Sound, freq: float, dba: float, score: float, trigger_data: dict) -> bool:
+    def check_trigger(self, sound: parselmouth.Sound, freq: float, dba: float, score: float,
+                      trigger_data: dict) -> bool:
         """Adds a trigger point to the recorder. If the quality score is below the threshold, the trigger point will be
         added to the grid. If a socket is provided, the trigger point will be emitted to the server.
 
@@ -270,16 +277,16 @@ class VoiceField:
         # add trigger if no previous entry exists
         if existing_score is None:
             self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
-            logging.info(f"VOICE_FIELD entry added - score: {score}, "
+            logger.info(f"VOICE_FIELD entry added - score: {score}, "
                          f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_score_threshold] % better than of existing score
-        if existing_score < score and score/existing_score - 1 > self.retrigger_score_threshold:
+        if existing_score < score and score / existing_score - 1 > self.retrigger_score_threshold:
             self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
-            logging.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
+            logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
                          f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
-        logging.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
+        logger.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
                      f"runtime: {time.time() - start:.6f} seconds")
         return False
 
@@ -290,7 +297,8 @@ class VoiceField:
         self.daq.start_acquisition(save_dir=data_dir)
         praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
         self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
-        self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin, self.id)
+        self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin,
+                                      self.id)
 
     def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:
         """Emit a voice update to the server.

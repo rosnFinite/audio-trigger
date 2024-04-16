@@ -10,6 +10,7 @@ from typing import List, Dict
 from audio.recorder import Trigger
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 file_handler = logging.FileHandler(os.path.join(os.getcwd(), "logs", "client.log"), mode="w")
 file_handler.setFormatter(logging.Formatter('%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s'))
 logger.addHandler(file_handler)
@@ -49,7 +50,7 @@ def on_settings_change(settings: dict) -> None:
     settings : dict
         Dictionary containing the updated settings.
     """
-    logger.debug("Received change setting event. Creating new trigger instance..")
+    logger.info("Change settings event received. Creating new trigger instance..")
     this.trigger = Trigger(rec_destination=os.path.join(os.getcwd(), "backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
                            min_score=settings["minScore"],
                            retrigger_score_threshold=settings["retriggerPercentageImprovement"],
@@ -84,23 +85,23 @@ def on_status_update(action: dict) -> None:
     action : dict
         Dictionary containing the action trigger.
     """
-    logger.debug(f"Received change status event: {action}")
+    logger.info(f"Change status event received: {action}")
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
         if not this.trigger.stream_thread_is_running:
-            logger.debug(f"Starting trigger, device: {this.trigger.recording_device}")
+            logger.info(f"Starting trigger, device: {this.trigger.recording_device}")
             this.trigger.start_trigger()
             client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
-            logger.debug("Trigger stopped.")
+            logger.info("Trigger stopped.")
             client.emit("statusChanged", {"recorder": "ready", "trigger": "ready"})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
             this.trigger.voice_field.reset_grid()
-            logger.debug("Trigger reset.")
+            logger.info("Trigger reset.")
             client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
 
 
@@ -114,7 +115,7 @@ def on_remove_recording(grid_location: dict) -> None:
         Dictionary containing the grid location of the recording to be removed. {freqBin, dbBin}
     """
     this.trigger.voice_field.grid[grid_location["dbaBin"]][grid_location["freqBin"]] = None
-    logger.debug(f"Removed recording at grid location: {grid_location}")
+    logger.info(f"Removed recording at grid location: {grid_location}")
 
 
 def run_client():
@@ -127,7 +128,5 @@ if __name__ == "__main__":
         client.connect("http://localhost:5001")
         client.wait()
     except KeyboardInterrupt:
-        print("Exiting...")
         client.disconnect()
         sys.exit(0)
-# TODO: Bundle into executable to run server an client in seperate processes
