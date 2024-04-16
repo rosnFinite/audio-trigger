@@ -232,4 +232,5 @@ fabric.properties
 
 
 /backend/recordings/*
+!/backend/recordings/.gitkeep
 !/backend/recordings/
