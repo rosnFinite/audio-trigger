@@ -51,7 +51,13 @@ def on_settings_change(settings: dict) -> None:
         Dictionary containing the updated settings.
     """
     logger.info("Change settings event received. Creating new trigger instance..")
-    this.trigger = Trigger(rec_destination=os.path.join(os.getcwd(), "backend", "recordings", time.strftime('%Y%m%d-%H%M%S', time.gmtime())),
+    # build path for recordings/measurements  <patient>_<timestamp> if patient is set
+    if settings["patient"] == "":
+        destination = os.path.join(os.getcwd(), "backend", "recordings", f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
+    else:
+        destination = os.path.join(os.getcwd(), "backend", "recordings", f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
+
+    this.trigger = Trigger(rec_destination=destination,
                            min_score=settings["minScore"],
                            retrigger_score_threshold=settings["retriggerPercentageImprovement"],
                            semitone_bin_size=settings["frequency"]["steps"],
