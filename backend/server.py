@@ -117,6 +117,13 @@ def get_parselmouth_stats(parent_dir: str, sub_dir: str) -> tuple[dict[str, str]
     return jsonify({"text_content": data}), 200
 
 
+"""
+========================================================================================================================
+                                            SOCKET.IO EVENT HANDLERS
+========================================================================================================================
+"""
+
+
 @server.on("connect")
 def connected():
     """This function is called when a client connects to the server.
@@ -142,7 +149,7 @@ def disconnected() -> None:
     logger.info(f"Client: {request.sid} disconnected.")
 
 
-@server.on("registerClient")
+@server.on("register")
 def on_register_client(data: dict) -> None:
     """Event handler for the "registerClient" event. Receives a dictionary containing the client's type "type" and
     session ID "sid". Emitting Client will be added to the connected_clients list if it is not already in the list and
@@ -202,7 +209,7 @@ def handle_voice_update(data: dict) -> None:
     emit("voice", data, to="client_room", skip_sid=request.sid)
 
 
-@server.on("changeSettings")
+@server.on("settings_update_request")
 def on_settings(req_settings: dict) -> None:
     """Event handler for the "changeSettings" event. Emitted to by the web client when the user wants to change
     settings.
@@ -218,7 +225,7 @@ def on_settings(req_settings: dict) -> None:
     emit("changeSettings", req_settings, to="client_room", skip_sid=request.sid)
 
 
-@server.on("settingsChanged")
+@server.on("settings_update_complete")
 def on_settings_changed(updated_settings: dict) -> None:
     """Event handler for when settings are changed. Emitted to by the audio trigger when the settings have changed.
 
@@ -233,7 +240,7 @@ def on_settings_changed(updated_settings: dict) -> None:
     emit("settingsChanged", updated_settings, to="client_room", skip_sid=request.sid)
 
 
-@server.on("changeStatus")
+@server.on("status_update_request")
 def on_change_status(action: dict) -> None:
     """Event handler for the "changeStatus" event. Emitted to by the web client when the user requests a status change.
     Receives an action dictionary containing actions for the recorder and trigger.
@@ -250,7 +257,7 @@ def on_change_status(action: dict) -> None:
     emit("changeStatus", action, to="client_room", skip_sid=request.sid)
 
 
-@server.on("statusChanged")
+@server.on("status_update_complete")
 def on_status_changed(updated_status: dict) -> None:
     """Event handler for when status is changed. Emitted to by the audio trigger when the status has changed.
 
@@ -266,23 +273,7 @@ def on_status_changed(updated_status: dict) -> None:
     emit("statusChanged", updated_status, to="client_room", skip_sid=request.sid)
 
 
-@server.on("startTrigger")
-def on_start_trigger(device_idx: int) -> None:
-    """Event handler for the "startTrigger" event. Emitted to by the web client when the user requests to
-    start the trigger.
-
-    Parameters
-    ----------
-    device_idx: int
-        The index of the device to use as the recording and triggering device.
-    """
-    if not check_registration(request.sid):
-        return
-    logger.info(f"Received start trigger event from sid: {request.sid} with device index: {device_idx}")
-    emit("startTrigger", device_idx, to="client_room", skip_sid=request.sid)
-
-
-@server.on("removeRecording")
+@server.on("remove_recording_request")
 def on_remove_recording(grid_location: dict) -> None:
     """Event handler for the "removeRecording" event. Emitted to by the web client when the user requests to remove a
     recording from the grid. Payload contains the grid location of the recording to be removed {freqBin, dbBin}.

@@ -41,7 +41,7 @@ def on_clients(clients: list) -> None:
     logger.debug(f"Received clients event with connected client: {clients}", )
 
 
-@client.on("changeSettings")
+@client.on("settings_update_request")
 def on_settings_change(settings: dict) -> None:
     """Function to handle settings change event.
 
@@ -79,10 +79,9 @@ def on_settings_change(settings: dict) -> None:
     settings["status"] = "ready"
     logger.debug("Emitting changed settings to server...")
     client.emit("settingsChanged", settings)
-    settings = this.trigger.settings
 
 
-@client.on("changeStatus")
+@client.on("status_update_request")
 def on_status_update(action: dict) -> None:
     """Function to handle status updates. Receives an action dictionary containing actions for the recorder and trigger.
     Possible actions are: start [trigger & recorder], stop [trigger & recorder], reset [trigger].
@@ -112,7 +111,7 @@ def on_status_update(action: dict) -> None:
             client.emit("statusChanged", {"status": "reset", "save_location": new_rec_destination})
 
 
-@client.on("removeRecording")
+@client.on("remove_recording_request")
 def on_remove_recording(grid_location: dict) -> None:
     """Function to handle the "removeRecording" event. Removes the recording at the specified grid location.
 
