@@ -83,10 +83,11 @@ class VoiceField:
         str
             The path to the newly created directory.
         """
+        original_path = path
         version = 0
         while os.path.exists(path):
             version += 1
-            path = os.path.join(os.path.dirname(path), f"{os.path.basename(path)}_{version}")
+            path = os.path.join(os.path.dirname(original_path), f"{os.path.basename(original_path)}_{version}")
         logger.info(f"Creating new directory: {path}")
         os.makedirs(path)
         return path
