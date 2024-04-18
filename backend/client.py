@@ -26,7 +26,7 @@ def on_connect() -> None:
     It prints a message indicating that the connection has been established.
     """
     logger.info("Connection to websocket server established. Registering as audio trigger client...")
-    client.emit("registerClient", {"type": "audio"})
+    client.emit("register", {"type": "audio"})
 
 
 @client.on("clients")
@@ -78,7 +78,7 @@ def on_settings_change(settings: dict) -> None:
     settings["status"] = "ready"
     settings["status"] = "ready"
     logger.debug("Emitting changed settings to server...")
-    client.emit("settingsChanged", settings)
+    client.emit("settings_update_complete", settings)
 
 
 @client.on("status_update_request")
@@ -97,18 +97,18 @@ def on_status_update(action: dict) -> None:
         if not this.trigger.stream_thread_is_running:
             logger.info(f"Starting trigger, device: {this.trigger.recording_device}")
             this.trigger.start_trigger()
-            client.emit("statusChanged", {"status": "running", "save_location": this.trigger.rec_destination})
+            client.emit("status_update_complete", {"status": "running", "save_location": this.trigger.rec_destination})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
             logger.info("Trigger stopped.")
-            client.emit("statusChanged", {"status": "ready", "save_location": this.trigger.rec_destination})
+            client.emit("status_update_complete", {"status": "ready", "save_location": this.trigger.rec_destination})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
             new_rec_destination = this.trigger.voice_field.reset_grid()
             logger.info("Trigger reset.")
-            client.emit("statusChanged", {"status": "reset", "save_location": new_rec_destination})
+            client.emit("status_update_complete", {"status": "reset", "save_location": new_rec_destination})
 
 
 @client.on("remove_recording_request")

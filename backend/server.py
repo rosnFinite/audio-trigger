@@ -222,7 +222,7 @@ def on_settings(req_settings: dict) -> None:
     if not check_registration(request.sid):
         return
     logger.info(f"Received change settings event from sid: {request.sid} with requested settings: {req_settings}")
-    emit("changeSettings", req_settings, to="client_room", skip_sid=request.sid)
+    emit("settings_update_request", req_settings, to="client_room", skip_sid=request.sid)
 
 
 @server.on("settings_update_complete")
@@ -237,7 +237,7 @@ def on_settings_changed(updated_settings: dict) -> None:
     if not check_registration(request.sid):
         return
     logger.info(f"Received settings changed event from sid: {request.sid} with updated settings: {updated_settings}")
-    emit("settingsChanged", updated_settings, to="client_room", skip_sid=request.sid)
+    emit("settings_update_complete", updated_settings, to="client_room", skip_sid=request.sid)
 
 
 @server.on("status_update_request")
@@ -254,7 +254,7 @@ def on_change_status(action: dict) -> None:
     if not check_registration(request.sid):
         return
     logger.info(f"Received change status event from sid:{request.sid} with requested status: {action}")
-    emit("changeStatus", action, to="client_room", skip_sid=request.sid)
+    emit("status_update_request", action, to="client_room", skip_sid=request.sid)
 
 
 @server.on("status_update_complete")
@@ -270,7 +270,7 @@ def on_status_changed(updated_status: dict) -> None:
         return
     print("status change fulfilled")
     logger.info(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
-    emit("statusChanged", updated_status, to="client_room", skip_sid=request.sid)
+    emit("status_update_complete", updated_status, to="client_room", skip_sid=request.sid)
 
 
 @server.on("remove_recording_request")
@@ -286,7 +286,7 @@ def on_remove_recording(grid_location: dict) -> None:
     if not check_registration(request.sid):
         return
     logger.info(f"Received remove recording event from sid: {request.sid} with grid location: {grid_location}")
-    emit("removeRecording", grid_location, to="client_room", skip_sid=request.sid)
+    emit("remove_recording_request", grid_location, to="client_room", skip_sid=request.sid)
 
 
 def run_server():
