@@ -31,13 +31,13 @@ class AudioRecorder:
         The sampling rate in frames per second.
     channels : int
         The number of audio channels.
-    chunksize : int
+    chunk_size : int
         The number of frames per buffer.
 
 
     Attributes
     ----------
-    chunksize : int
+    chunk_size : int
         The number of frames per buffer.
     channels : int
         The number of audio channels.
@@ -63,16 +63,16 @@ class AudioRecorder:
         An event to signal the stream thread to stop.
     """
 
-    def __init__(self, buffer_size: float = 10., rate: int = 16000, channels: int = 2, chunksize: int = 1024):
+    def __init__(self, buffer_size: float = 10., rate: int = 16000, channels: int = 2, chunk_size: int = 1024):
         # "CHUNK" is the (arbitrarily chosen) number of frames the (potentially very long)
-        self.chunksize = chunksize
+        self.chunk_size = chunk_size
         # channels == 1, only audio input | channels == 2, audio and egg input
         self.channels = channels
         # "RATE" is the "sampling rate", i.e. the number of frames per second
         self.rate = rate
         self.buffer_size = buffer_size
-        self.frames = collections.deque([] * int((buffer_size * rate) / chunksize),
-                                        maxlen=int((buffer_size * rate) / chunksize))
+        self.frames = collections.deque([] * int((buffer_size * rate) / chunk_size),
+                                        maxlen=int((buffer_size * rate) / chunk_size))
         self.p = pyaudio.PyAudio()
         self.stream = None
         self.recording_devices = self.__load_recording_devices()
@@ -163,7 +163,7 @@ class AudioRecorder:
                              rate=self.rate,
                              input=True,
                              input_device_index=input_device_index,
-                             frames_per_buffer=self.chunksize,
+                             frames_per_buffer=self.chunk_size,
                              stream_callback=cb)
         while not self.stop_event.is_set():
             pass
@@ -243,7 +243,7 @@ class Trigger(AudioRecorder):
         The path to the file containing calibration factors for dB(A) level calculation.
     min_score : float
         The minimum quality score threshold for accepting a trigger.
-    retrigger_score_threshold: float
+    retrigger_percentage_improvement: float
         The minimum quality score improvement [percentage] for retriggering an already set recording.
     semitone_bin_size : int
         The size of the semitone bins for frequency analysis.
@@ -259,7 +259,7 @@ class Trigger(AudioRecorder):
         The number of audio channels.
     rate : int
         The sample rate of the audio.
-    chunksize : int
+    chunk_size : int
         The size of each audio chunk.
     socket : Optional
         The websocket connection object.
@@ -280,7 +280,7 @@ class Trigger(AudioRecorder):
                  rec_destination: str = f"recordings/{time.strftime('%Y%m%d-%H%M%S', time.gmtime())}",
                  dba_calib_file: Optional[str] = None,
                  min_score: float = 0.7,
-                 retrigger_score_threshold: float = 0.1,
+                 retrigger_percentage_improvement: float = 0.1,
                  semitone_bin_size: int = 2,
                  freq_bounds: Tuple[float, float] = (150.0, 1700.0),
                  dba_bin_size: int = 5,
@@ -288,10 +288,10 @@ class Trigger(AudioRecorder):
                  buffer_size: float = 1.0,
                  channels: int = 1,
                  rate: int = 44100,
-                 chunksize: int = 1024,
+                 chunk_size: int = 1024,
                  socket: Optional[socketio.Client] = None):
         logger.info(f"Number of channels: {channels}")
-        super().__init__(buffer_size, rate, channels, chunksize)
+        super().__init__(buffer_size, rate, channels, chunk_size)
         self.min_score = min_score
         self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
         self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
@@ -317,24 +317,34 @@ class Trigger(AudioRecorder):
             dba_bin_size=dba_bin_size,
             dba_bounds=dba_bounds,
             min_score=min_score,
-            retrigger_score_threshold=retrigger_score_threshold,
+            retrigger_percentage_improvement=retrigger_percentage_improvement,
             socket=self.socket
         )
-        self.instance_settings = {
-            "sampleRate": rate,
-            "bufferSize": buffer_size,
-            "chunkSize": chunksize,
+        self.init_settings = {
+            "sampling_rate": rate,
+            "save_location": rec_destination,
+            "buffer_size": buffer_size,
+            "chunk_size": chunk_size,
             "channels": channels,
-            "minScore": min_score,
-            "reriggerScoreThreshold": retrigger_score_threshold,
-            "freqBounds": freq_bounds,
-            "semitoneBinSize": semitone_bin_size,
-            "dbaBounds": dba_bounds,
-            "dbaBinSize": dba_bin_size
+            "min_score": min_score,
+            "retrigger_percentage_improvement": retrigger_percentage_improvement,
+            "freq_bounds": freq_bounds,
+            "semitone_bin_size": semitone_bin_size,
+            "dba_bounds": dba_bounds,
+            "dba_bin_size": dba_bin_size
         }
-        logger.info(f"Successfully created trigger: {self.instance_settings}")
-        self.debug_num_runs = 0
-        self.debug_inner_runs = 0
+        logger.info(f"Successfully created trigger: {self.init_settings}")
+
+    @property
+    def settings(self) -> dict:
+        """Get the settings of the trigger instance.
+
+        Returns
+        -------
+        dict
+            The settings of the trigger instance.
+        """
+        return {**self.init_settings, "device": self.recording_device}
 
     def __check_rec_destination(self) -> None:
         """Check if the destination folder for the recorded audio files exists. If not, create it.
@@ -389,15 +399,17 @@ class Trigger(AudioRecorder):
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
             sound = parselmouth.Sound(data, sampling_frequency=self.rate)
+            logger.debug(f"Sound duration: {sound.get_total_duration()} seconds")
             score, dom_freq = calc_pitch_score(sound=sound,
                                                freq_floor=self.voice_field.freq_bins_lb[0],
-                                               freq_ceiling=self.rate//2)
+                                               freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
+            logger.debug(f"Score: {score}, Dominant frequency: {dom_freq}, dB(A) level: {dba_level}")
             is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
                                                      trigger_data={"data": data, "sampling_rate": self.rate})
             if is_trig:
-                self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunksize),
-                                                maxlen=int((self.buffer_size * self.rate) / self.chunksize))
+                self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
+                                                maxlen=int((self.buffer_size * self.rate) / self.chunk_size))
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self) -> None:

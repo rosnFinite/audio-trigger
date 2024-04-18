@@ -34,7 +34,7 @@ class VoiceField:
         The lower and upper bounds of the db(A) range.
     min_score : float
         The minimum score required for a trigger to be added. Score is between 1 (best) and 0 (worst).
-    retrigger_score_threshold: float
+    retrigger_percentage_improvement: float
         The minimum quality score improvement [percentage] for retriggering an already set recording.
     socket : Optional
         The socket object for emitting voice updates. Defaults to None.
@@ -47,11 +47,11 @@ class VoiceField:
                  dba_bin_size: int = 5,
                  dba_bounds: Tuple[int, int] = (35, 115),
                  min_score: float = 0.7,
-                 retrigger_score_threshold: float = 0.1,
+                 retrigger_percentage_improvement: float = 0.1,
                  socket=None):
         self.rec_destination = rec_destination
         self.min_score = min_score
-        self.retrigger_score_threshold = retrigger_score_threshold
+        self.retrigger_percentage_improvement = retrigger_percentage_improvement
         self.socket = socket
         self.daq = DAQ_Device(num_samples=1000, sample_rate=100000, analog_input_channels=["ai0"],
                               digital_trig_channel="pfi5")
@@ -68,35 +68,26 @@ class VoiceField:
         logger.info(
             f"Created voice field with {len(self.freq_bins_lb)}[frequency bins] x {len(self.dba_bins_lb)}[dba bins].")
 
-    def __create_data_dir(self, freq_bin: int, dba_bin: int) -> str:
-        """Creates directory to store data corresponding to provided grid cell.
-        
+    @staticmethod
+    def __create_versioned_dir(path: str) -> str:
+        """Creates a new directory with an incremented version number if the directory already exists.
+        If the directory does not exist, the path is returned as is.
+
         Parameters
         ----------
-        freq_bin : int
-            Frequency bin of corresponding grid cell
-        dba_bin : int
-            Dezibel bin of corresponding grid cell
-        
+        path : str
+            The path to the directory to increment.
+
         Returns
         -------
         str
-            Full path to the created directory for storing grid cell data.
+            The path to the newly created directory.
         """
-        # build the path name for grid data folder
-        path = os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}")
-
-        if os.path.exists(path):
-            # get all folders that start with the same pattern "dba_freq"
-            existing_cell_folders = []
-            with os.scandir(os.path.dirname(path)) as entries:
-                for entry in entries:
-                    # check if entry is directory and starts with same pattern 
-                    if entry.is_dir() and entry.name.startswith(f"{dba_bin}_{freq_bin}"):
-                        existing_cell_folders.append(entry.name)
-
-            os.rename(path, os.path.join(os.path.dirname(path), f"{dba_bin}_{freq_bin}_{len(existing_cell_folders)}"))
-
+        version = 0
+        while os.path.exists(path):
+            version += 1
+            path = os.path.join(os.path.dirname(path), f"{os.path.basename(path)}_{version}")
+        logger.info(f"Creating new directory: {path}")
         os.makedirs(path)
         return path
 
@@ -176,32 +167,26 @@ class VoiceField:
         """
         if not self.__is_bounds_valid(dba_bounds):
             logger.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
-                             f"Got {dba_bounds}")
+                            f"Got {dba_bounds}")
             raise ValueError("Provided db(A) bounds are not valid.")
         lower_bounds = [min(dba_bounds)]
         while lower_bounds[-1] < max(dba_bounds):
             lower_bounds.append(lower_bounds[-1] + dba_bin_size)
         return lower_bounds
 
-    def reset_grid(self) -> None:
+    def reset_grid(self) -> str:
         """Resets the grid to its initial state and creates a new recording directory. The new directory will use the
         name of the previous directory with an incremented number at the end.
         <prefix>_<date>_<time> -> <prefix>_<date>_<time>_<version> where version is the incremented number.
+
+        Returns
+        -------
+        str
+            The path to the newly created recording directory.
         """
         self.grid = [[None] * len(self.freq_bins_lb) for _ in range(len(self.dba_bins_lb))]
-        # creating new recording directory with incremented version number
-        dirname = os.path.dirname(self.rec_destination)
-        basename = os.path.basename(self.rec_destination)
-        basename_components = basename.split("_")
-        if len(basename_components) < 3:
-            pass
-        elif len(basename_components) == 3:
-            basename_components.append("1")
-        else:
-            basename_components[-1] = str(int(basename_components[-1]) + 1)
-        self.rec_destination = os.path.join(dirname, "_".join(basename_components))
-        os.makedirs(self.rec_destination)
-        logger.info("Voice field grid reset.")
+        logger.info(f"Voice field grid reset. New recording directory created: {self.rec_destination}")
+        return self.__create_versioned_dir(self.rec_destination)
 
     def save_data(self, save_dir: str, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int,
                   id: int) -> None:
@@ -290,22 +275,22 @@ class VoiceField:
         if existing_score is None:
             self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry added - score: {score}, "
-                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
+                        f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
-        # check if new score is [retrigger_score_threshold] % better than of existing score
-        if existing_score < score and score / existing_score - 1 > self.retrigger_score_threshold:
+        # check if new score is [retrigger_percentage_improvement] % better than of existing score
+        if existing_score < score and score / existing_score - 1 > self.retrigger_percentage_improvement:
             self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
-                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
+                        f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         logger.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
-                     f"runtime: {time.time() - start:.6f} seconds")
+                    f"runtime: {time.time() - start:.6f} seconds")
         return False
 
     def __add_trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
         self.id += 1
-        self.grid[dba_bin][freq_bin ] = score
-        data_dir = self.__create_data_dir(freq_bin, dba_bin)
+        self.grid[dba_bin][freq_bin] = score
+        data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}"))
         self.daq.start_acquisition(save_dir=data_dir)
         praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
         self.emit_trigger(freq_bin, dba_bin, score, praat_stats)

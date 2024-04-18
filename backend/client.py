@@ -58,16 +58,16 @@ def on_settings_change(settings: dict) -> None:
         destination = os.path.join(os.getcwd(), "backend", "recordings", f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
 
     this.trigger = Trigger(rec_destination=destination,
-                           min_score=settings["minScore"],
-                           retrigger_score_threshold=settings["retriggerPercentageImprovement"],
+                           min_score=settings["min_score"],
+                           retrigger_percentage_improvement=settings["retrigger_percentage_improvement"],
                            semitone_bin_size=settings["frequency"]["steps"],
                            freq_bounds=(settings["frequency"]["lower"], settings["frequency"]["upper"]),
                            dba_bin_size=settings["db"]["steps"],
                            dba_bounds=(settings["db"]["lower"], settings["db"]["upper"]),
-                           buffer_size=settings["bufferSize"],
+                           buffer_size=settings["buffer_size"],
                            channels=1 if settings["mono"] else 2,
-                           rate=settings["sampleRate"],
-                           chunksize=settings["chunkSize"],
+                           rate=settings["sampling_rate"],
+                           chunk_size=settings["chunk_size"],
                            socket=client)
     settings["save_location"] = this.trigger.rec_destination
     if settings["device"] == -1:
@@ -75,10 +75,11 @@ def on_settings_change(settings: dict) -> None:
         #TODO: Ändern für automatische Auswahl des iMic-Microphone
     else:
         this.trigger.recording_device = settings["device"]
-    settings["status"]["recorder"] = "ready"
-    settings["status"]["trigger"] = "ready"
+    settings["status"] = "ready"
+    settings["status"] = "ready"
     logger.debug("Emitting changed settings to server...")
     client.emit("settingsChanged", settings)
+    settings = this.trigger.settings
 
 
 @client.on("changeStatus")
@@ -97,18 +98,18 @@ def on_status_update(action: dict) -> None:
         if not this.trigger.stream_thread_is_running:
             logger.info(f"Starting trigger, device: {this.trigger.recording_device}")
             this.trigger.start_trigger()
-            client.emit("statusChanged", {"recorder": "running", "trigger": "running"})
+            client.emit("statusChanged", {"status": "running", "save_location": this.trigger.rec_destination})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
             logger.info("Trigger stopped.")
-            client.emit("statusChanged", {"recorder": "ready", "trigger": "ready"})
+            client.emit("statusChanged", {"status": "ready", "save_location": this.trigger.rec_destination})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
-            this.trigger.voice_field.reset_grid()
+            new_rec_destination = this.trigger.voice_field.reset_grid()
             logger.info("Trigger reset.")
-            client.emit("statusChanged", {"recorder": "reset", "trigger": "reset"})
+            client.emit("statusChanged", {"status": "reset", "save_location": new_rec_destination})
 
 
 @client.on("removeRecording")
