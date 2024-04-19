@@ -1,4 +1,5 @@
 import logging
+import os
 import random
 import time
 from queue import Queue
@@ -27,7 +28,7 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
         """
         identifier = random.randint(0, 10000)
         logger.info(f"Identifier: {identifier} File created: {event.src_path}")
-        parent_dir = "\\".join(event.src_path.split("\\")[:-1])
+        parent_dir = os.path.split(event.src_path)[0]
         # solution to fix issue of file not being fully created yet
         # on creation event does not take writing process into account
         snd = None
