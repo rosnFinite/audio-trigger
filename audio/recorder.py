@@ -398,21 +398,23 @@ class Trigger(AudioRecorder):
         # TODO: Check if emptying frames will lead to better results -> less overlap between trigger
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
+        """
         if self.__trigger_disabled_time is not None:
             if self.__is_trigger_disabled:
                 # check if time between disabling and now is at least one second -> enable trigger again
                 current_time = time_info["current_time"]
-                if current_time - self.__trigger_disabled_time  >= 1 :
+                if current_time - self.__trigger_disabled_time >= 1:
                     self.__is_trigger_disabled = False
-        if len(self.frames) == self.frames.maxlen and not self.__is_trigger_disabled:
+        
+        add not self.__is_trigger_disabled to if statement
+        """
+        if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
             sound = parselmouth.Sound(data, sampling_frequency=self.rate)
-            logger.debug(f"Sound duration: {sound.get_total_duration()} seconds")
             score, dom_freq = calc_pitch_score(sound=sound,
                                                freq_floor=self.voice_field.freq_bins_lb[0],
                                                freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
-            logger.debug(f"Score: {score}, Dominant frequency: {dom_freq}, dB(A) level: {dba_level}")
             triggered = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
                                                        trigger_data={"data": data, "sampling_rate": self.rate})
             if triggered:
