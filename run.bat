@@ -64,17 +64,17 @@ GOTO Run
 REM Check if "logs" directory exists, if not create it
 IF NOT EXIST "%LOGS_DIR%" (
     ECHO Creating "logs" directory
-    mkdir "%LOGS_DIR%"
+    MKDIR "%LOGS_DIR%"
 )
 REM Check if "server.log" exists (inside logs), if not create it
 IF NOT EXIST "%SERVER_LOG%" (
     ECHO Creating "server.log"
-    echo Server Log File Created on %date% %time% > "%SERVER_LOG%"
+    ECHO Server Log File Created on %date% %time% > "%SERVER_LOG%"
 )
 REM same for "client.log"
 IF NOT EXIST "%CLIENT_LOG%" (
     ECHO Creating "client.log"
-    echo Client Log File Created on %date% %time% > "%CLIENT_LOG%"
+    ECHO Client Log File Created on %date% %time% > "%CLIENT_LOG%"
 )
 ECHO Starting program (This might take a few seconds)
 python "%~dp0%SCRIPT_NAME%"
