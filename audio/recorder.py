@@ -297,7 +297,6 @@ class Trigger(AudioRecorder):
         self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
-        self.__last_trigger_time = None
         # create a websocket connection
         self.socket = socket
         if self.socket is not None:
