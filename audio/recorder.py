@@ -297,8 +297,7 @@ class Trigger(AudioRecorder):
         self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
-        self.__is_trigger_disabled = False
-        self.__trigger_disabled_time = None
+        self.__last_trigger_time = None
         # create a websocket connection
         self.socket = socket
         if self.socket is not None:
@@ -395,19 +394,16 @@ class Trigger(AudioRecorder):
         Tuple[bytes, int]
             A tuple containing the modified input data and the status code.
         """
-        # TODO: Check if emptying frames will lead to better results -> less overlap between trigger
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
-        """
-        if self.__trigger_disabled_time is not None:
-            if self.__is_trigger_disabled:
-                # check if time between disabling and now is at least one second -> enable trigger again
-                current_time = time_info["current_time"]
-                if current_time - self.__trigger_disabled_time >= 1:
-                    self.__is_trigger_disabled = False
-        
-        add not self.__is_trigger_disabled to if statement
-        """
+        # disable trigger / voice processing after a trigger for 1 second
+        # (time for the camera to be ready for next recording)
+        if self.__last_trigger_time is not None:
+            time_diff = time.time() - self.__last_trigger_time
+            if time_diff < 1:
+                logger.debug(f"Trigger callback processing temporarily disabled. Time diff: {time_diff} < 1")
+                return input_data, pyaudio.paContinue
+
         if len(self.frames) == self.frames.maxlen:
             data = self.get_audio_data()
             sound = parselmouth.Sound(data, sampling_frequency=self.rate)
@@ -415,15 +411,12 @@ class Trigger(AudioRecorder):
                                                freq_floor=self.voice_field.freq_bins_lb[0],
                                                freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
-            triggered = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
-                                                       trigger_data={"data": data, "sampling_rate": self.rate})
-            if triggered:
-                # empty queue and wait for camera to be ready for next recording
+            is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
+                                                     trigger_data={"data": data, "sampling_rate": self.rate})
+            if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))
-                # disable 
-                self.__is_trigger_disabled = True
-                
+                self.__last_trigger_time = time.time()
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self) -> None:
