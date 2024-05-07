@@ -5,7 +5,7 @@ import os
 
 from backend.server import run_server
 from backend.client import run_client
-from file_watcher.file_watcher import run_file_watcher
+from file_watcher.watcher import run_watcher
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
@@ -18,7 +18,7 @@ logger.setLevel(logging.DEBUG)
 if __name__ == "__main__":
     processes = []
     try:
-        proc = multiprocessing.Process(target=run_file_watcher,
+        proc = multiprocessing.Process(target=run_watcher,
                                        args=(os.path.join(os.getcwd(), "backend", "recordings"),))
         processes.append(proc)
         proc.start()

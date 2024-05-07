@@ -3,6 +3,7 @@ import os
 import random
 import time
 from queue import Queue
+from typing import List
 
 import parselmouth
 from watchdog.events import PatternMatchingEventHandler, FileSystemEvent
@@ -42,21 +43,43 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
         self.queue.put({"id": identifier, "dir_path": parent_dir, "parsel_sound": snd})
 
 
-def start_watchdog(q: Queue, path_to_watch: str) -> None:
-    """Starts the watchdog observer to monitor the specified directory for new files. Will monitor all subdirectories.
+class CameraRecordingsFileHandler(PatternMatchingEventHandler):
+    def __init__(self, queue: Queue):
+        PatternMatchingEventHandler.__init__(self, patterns=["*.cihx"])
+        self.queue = queue
+
+    def on_created(self, event: FileSystemEvent) -> None:
+        """Event handler for file creation events. Will create a new parselmouth.Sound object from the file and store it
+        in the queue for further processing.
+
+        Parameters
+        ----------
+        event : FileSystemEvent
+            The event object containing information about the file creation event.
+        """
+        logger.info("Camera recording finished. CIHX File created: %s", event.src_path)
+
+
+def start_watchdog(q: Queue, paths_to_watch: List[str]) -> None:
+    """Starts the watchdog observer to monitor the specified directories for new files. Will monitor all subdirectories.
 
     Parameters
     ----------
     q : Queue
         The queue to store the events.
-    path_to_watch : str
-        The path to the directory to monitor.
+    paths_to_watch : list of str
+        The paths to the directories to monitor. [camera_recordings_path, client_recordings_path]
     """
+    camera_recordings_path, client_recordings_path = paths_to_watch
     logger.info("Starting watchdog observer...")
     event_handler = ClientRecordingsFileHandler(queue=q)
+    camera_event_handler = CameraRecordingsFileHandler(queue=q)
 
     observer = Observer()
-    observer.schedule(event_handler, path=path_to_watch, recursive=True)
+    if client_recordings_path is not None:
+        observer.schedule(event_handler, path=client_recordings_path, recursive=True)
+    if camera_recordings_path is not None:
+        observer.schedule(camera_event_handler, path=camera_recordings_path, recursive=True)
     observer.start()
 
     try:

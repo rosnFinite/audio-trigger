@@ -11,20 +11,24 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-def run_file_watcher(path_to_watch: str):
+def run_watcher(camera_recordings_path: str = None, client_recordings_path: str = None):
     """Function to start the file watcher thread. Will start the watchdog observer thread and create a thread pool to
     handle the visualization creation tasks.
 
     Parameters
     ----------
-    path_to_watch : str
-        The path to the directory to monitor.
+    camera_recordings_path : str
+        The path to the parent directory of the camera recordings.
+    client_recordings_path : str
+        The path to the parent directory of the client recordings.
     """
     watchdog_queue = Queue()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     logger.info("Starting watchdog observer thread...")
-    worker = Thread(target=start_watchdog, name="Watchdog", args=(watchdog_queue, path_to_watch), daemon=True)
+    worker = Thread(target=start_watchdog,
+                    name="Watchdog",
+                    args=(watchdog_queue, [camera_recordings_path, client_recordings_path]), daemon=True)
     worker.start()
 
     while True:
@@ -37,4 +41,4 @@ def run_file_watcher(path_to_watch: str):
 if __name__ == "__main__":
     dir_path = "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\backend\\recordings"
 
-    run_file_watcher(dir_path)
+    run_watcher(dir_path)
