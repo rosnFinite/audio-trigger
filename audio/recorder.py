@@ -15,6 +15,7 @@ import socketio
 from .voice_field import VoiceField
 from .processing.db import get_dba_level
 from .processing.scoring import calc_pitch_score
+from config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -261,6 +262,8 @@ class Trigger(AudioRecorder):
         The sample rate of the audio.
     chunk_size : int
         The size of each audio chunk.
+    trigger_timeout : float
+        The timeout in seconds for after a trigger event.
     socket : Optional
         The websocket connection object.
 
@@ -289,15 +292,34 @@ class Trigger(AudioRecorder):
                  channels: int = 1,
                  rate: int = 44100,
                  chunk_size: int = 1024,
-                 socket: Optional[socketio.Client] = None):
-        logger.info(f"Number of channels: {channels}")
-        super().__init__(buffer_size, rate, channels, chunk_size)
-        self.min_score = min_score
-        self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
-        self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
+                 trigger_timeout: float = 1.0,
+                 socket: Optional[socketio.Client] = None,
+                 from_config: bool = False) -> None:
+        # update default settings with config file settings if from_config is True
+        if from_config:
+            logger.info("Loading trigger settings from config file...")
+            super().__init__(CONFIG["buffer_size"], CONFIG["rate"], CONFIG["channels"], CONFIG["chunk_size"])
+            self.min_score = CONFIG["min_score"]
+            self.rec_destination = CONFIG["client_recordings_path"]
+            self.trigger_timeout = CONFIG["trigger_timeout"]
+            retrigger_percentage_improvement = CONFIG["min_trigger_improvement"]
+            semitone_bin_size = CONFIG["semitone_bin_size"]
+            freq_bounds = (CONFIG["frequency_bounds"]["lower"], CONFIG["frequency_bounds"]["upper"])
+            dba_bin_size = CONFIG["decibel_bin_size"]
+            dba_bounds = (CONFIG["decibel_bounds"]["lower"], CONFIG["decibel_bounds"]["upper"])
+        else:
+            super().__init__(buffer_size, rate, channels, chunk_size)
+            self.min_score = min_score
+            self.rec_destination = os.path.join(os.path.dirname(os.path.abspath(__file__)), rec_destination)
+            self.trigger_timeout = trigger_timeout
+
         # check if trigger destination folder exists, else create
         self.__check_rec_destination()
+
+        self.calib_factors = self.__load_calib_factors(dba_calib_file) if dba_calib_file is not None else None
+
         self.__last_trigger_time = None
+
         # create a websocket connection
         self.socket = socket
         if self.socket is not None:
@@ -311,23 +333,23 @@ class Trigger(AudioRecorder):
                     logger.info("Websocket connection to default server successfully established.")
                 except Exception:
                     logger.critical("Websocket connection to default server failed.")
+
         self.voice_field = VoiceField(
             rec_destination=self.rec_destination,
             semitone_bin_size=semitone_bin_size,
             freq_bounds=freq_bounds,
-            dba_bin_size=dba_bin_size,
             dba_bounds=dba_bounds,
-            min_score=min_score,
+            min_score=self.min_score,
             retrigger_percentage_improvement=retrigger_percentage_improvement,
             socket=self.socket
         )
         self.init_settings = {
-            "sampling_rate": rate,
-            "save_location": rec_destination,
-            "buffer_size": buffer_size,
-            "chunk_size": chunk_size,
-            "channels": channels,
-            "min_score": min_score,
+            "sampling_rate": self.rate,
+            "save_location": self.rec_destination,
+            "buffer_size": self.buffer_size,
+            "chunk_size": self.chunk_size,
+            "channels": self.channels,
+            "min_score": self.min_score,
             "retrigger_percentage_improvement": retrigger_percentage_improvement,
             "freq_bounds": freq_bounds,
             "semitone_bin_size": semitone_bin_size,
@@ -350,7 +372,7 @@ class Trigger(AudioRecorder):
     def __check_rec_destination(self) -> None:
         """Check if the destination folder for the recorded audio files exists. If not, create it.
         """
-        print(f"Checking rec destination: {self.rec_destination}")
+        logger.info(f"Checking rec destination: {self.rec_destination}")
         if os.path.exists(self.rec_destination):
             return
         os.makedirs(self.rec_destination)

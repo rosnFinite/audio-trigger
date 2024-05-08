@@ -1,0 +1,58 @@
+# default location to which the trigger process will store its data (audio data, audio metrics, plots, etc.) for every trigger event
+client_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\backend\recordings
+# location to which the camera will store its recorded images (According to save settings inside the PFV4 Software)
+camera_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\backend\camera
+
+# When working with the web application, most of the following configuration can be set inside the web application itself
+# Configuration only changeable via this file will be marked with 'CONFIGURATION ONLY CHANGEABLE VIA THIS FILE'
+
+# configuration for the non-blocking pyaudio recorder
+recorder:
+  # sampling rate in Hz
+  rate: 16000
+  # number of audio channels (2, when connected to EGG [1st channel: audio, 2nd channel: EGG data])
+  channels: 1
+  # number of bytes per audio sample
+  chunk_size: 1024
+  # time in seconds to be continuously recorded and used for further processing (trigger detection, etc.)
+  buffer_size: 0.2
+  # time in seconds that the recorder stops after a trigger event occurred (waiting for the camera to finish recording)
+  # [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
+  trigger_timeout: 1.5
+
+# configuration for the trigger detection (voice field as representation of the recorded trigger data)
+# - the trigger detection is based on the audio data recorded by the recorder
+voice_field:
+  ###########################################################################################
+  #                               Configuration of the voice field                          #
+  # Voice field keeps track of already recorded triggers and their corresponding audio data #
+  ###########################################################################################
+  semitone_bin_size: 2
+  frequency_bounds:
+    lower: 55
+    upper: 1600
+  decibel_bin_size: 5
+  decibel_bounds:
+    lower: 35
+    upper: 115
+  ##########################################
+  # Configuration of the trigger detection #
+  ##########################################
+  # Minimum score to an audio input has to reach to be recorded
+  min_trigger_score: 0.5
+  # Minimum percentage improvement to an already recorded trigger with same decibel and frequency values to overwrite it
+  min_trigger_improvement: 0.1
+  ####################
+  # Data Acquisition #
+  ####################
+  # list of analog input channels to record on trigger [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
+  analog_input_channels:
+    - "ai0"
+  # digital output channel used to send trigger signal to camera [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
+  digital_trigger_channel: "pfi5"
+  # [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
+  sample_rate: 10000
+  # [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
+  number_of_samples: 1000
+
+

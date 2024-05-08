@@ -6,6 +6,7 @@ import os
 from backend.server import run_server
 from backend.client import run_client
 from file_watcher.watcher import run_watcher
+from config_utils import CONFIG
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
@@ -19,7 +20,7 @@ if __name__ == "__main__":
     processes = []
     try:
         proc = multiprocessing.Process(target=run_watcher,
-                                       args=(os.path.join(os.getcwd(), "backend", "recordings"),))
+                                       args=(CONFIG["camera_recordings_path"], CONFIG["client_recordings_path"], ))
         processes.append(proc)
         proc.start()
 

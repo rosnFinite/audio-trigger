@@ -8,6 +8,8 @@ import nidaqmx.errors
 import nidaqmx.system
 import numpy as np
 
+from config_utils import CONFIG
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -18,13 +20,19 @@ class DAQ_Device:
                  num_samples: int,
                  analog_input_channels: List[str],
                  digital_trig_channel: str,
-                 device_id: str = None):
+                 device_id: str = None,
+                 from_config: bool = False):
         self.device = self.__select_daq(device_id)
-        self.analog_input_channels = analog_input_channels
-        self.digital_trig_channel = digital_trig_channel
-        self.sample_rate = sample_rate
-        self.num_samples = num_samples
-        pass
+        if from_config:
+            self.analog_input_channels = CONFIG["analog_input_channels"]
+            self.digital_trig_channel = CONFIG["digital_trigger_channel"]
+            self.sample_rate = CONFIG["sample_rate"]
+            self.num_samples = CONFIG["number_of_samples"]
+        else:
+            self.analog_input_channels = analog_input_channels
+            self.digital_trig_channel = digital_trig_channel
+            self.sample_rate = sample_rate
+            self.num_samples = num_samples
 
     @staticmethod
     def __select_daq(device_id: str = None) -> Optional[nidaqmx.system.Device]:
