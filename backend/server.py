@@ -268,7 +268,6 @@ def on_status_changed(updated_status: dict) -> None:
     """
     if not check_registration(request.sid):
         return
-    print("status change fulfilled")
     logger.info(f"Received status changed event from sid: {request.sid} with updated status: {updated_status}")
     emit("status_update_complete", updated_status, to="client_room", skip_sid=request.sid)
 
