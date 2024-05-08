@@ -5,7 +5,7 @@ from queue import Queue
 from threading import Thread
 
 from .EventHandler import start_watchdog
-from .utils import create_visualizations
+from .utils import create_visualizations, raww_to_jpg
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -22,18 +22,21 @@ def run_watcher(camera_recordings_path: str = None, client_recordings_path: str 
     client_recordings_path : str
         The path to the parent directory of the client recordings.
     """
-    watchdog_queue = Queue()
+    plotting_queue = Queue()
+    camera_image_queue = Queue()
     pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     logger.info("Starting watchdog observer thread...")
     worker = Thread(target=start_watchdog,
                     name="Watchdog",
-                    args=(watchdog_queue, [camera_recordings_path, client_recordings_path]), daemon=True)
+                    args=(plotting_queue, camera_image_queue, [camera_recordings_path, client_recordings_path]), daemon=True)
     worker.start()
 
     while True:
-        if not watchdog_queue.empty():
-            pool.submit(create_visualizations, watchdog_queue.get())
+        if not plotting_queue.empty():
+            pool.submit(create_visualizations, plotting_queue.get())
+        if not camera_image_queue.empty():
+            pool.submit(raww_to_jpg, camera_image_queue.get())
         else:
             time.sleep(1)
 

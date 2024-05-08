@@ -292,6 +292,12 @@ class VoiceField:
         self.id += 1
         self.grid[dba_bin][freq_bin] = score
         data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}"))
+
+        # create a file named after newly added folder to parent dir of client recordings
+        # this allows to easily find the latest added trigger for referencing corresponding camera images
+        with open(os.path.join(os.path.split(self.rec_destination)[0], ".latest_trigger"), "w+") as f:
+            f.write(data_dir)
+
         self.daq.start_acquisition(save_dir=data_dir)
         praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
         self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
