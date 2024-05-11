@@ -19,6 +19,14 @@ logger.setLevel(logging.DEBUG)
 
 
 def create_visualizations(get_event):
+    """
+    Create visualizations for the provided event.
+
+    Parameters
+    ----------
+    get_event : dict
+        Dictionary containing information about the event.
+    """
     start = time.time()
     logger.info(f"Creating visualizations for {get_event['dir_path']}, Identifier: {get_event['id']} ...")
     logger.info(f"Plotting waveform for {get_event['dir_path']}...")
@@ -42,6 +50,16 @@ def create_visualizations(get_event):
 
 
 def plot_waveform(data, location):
+    """
+    Plot the waveform of the provided data object.
+
+    Parameters
+    ----------
+    data : Parselmouth.Sound
+        Sound object.
+    location : str
+        The directory where the plot will be saved.
+    """
     plt.figure()
     plt.plot(data.xs(), data.values.T)
     plt.xlim([data.xmin, data.xmax])
@@ -53,6 +71,18 @@ def plot_waveform(data, location):
 
 
 def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
+    """
+    Plot the spectrogram and intensity of the provided sound object.
+
+    Parameters
+    ----------
+    sound : Parselmouth.Sound
+        Sound object.
+    spectrogram : Parselmouth.Spectrogram
+        Spectrogram object.
+    intensity : Parselmouth.Intensity
+        Intensity object.
+    """
     plt.figure()
 
     X, Y = spectrogram.x_grid(), spectrogram.y_grid()
@@ -77,6 +107,14 @@ def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
 
 
 def create_image_grid(get_event):
+    """
+    Create an image grid for the provided event.
+
+    Parameters
+    ----------
+    get_event : dict
+        Dictionary containing information about the event.
+    """
     logger.info(f"Creating image grid for {get_event['dir_path']}, Identifier: {get_event['id']}...")
     img_paths: List[str] = get_event["images"]
     meta_path = get_event["meta"]
@@ -98,6 +136,18 @@ def create_image_grid(get_event):
 
 
 def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):
+    """
+    Transform raww images provided as a list of paths to JPEG and stores them in the specified directory.
+
+    Parameters
+    ----------
+    img_paths : List[str]
+        List of paths to raww images to be transformed.
+    meta_path : str
+        Path to the metadata file with a '.cihx' extension.
+    save_path : str
+        The directory where the transformed images will be saved.
+    """
     logger.info(f"Transforming raww images {img_paths} to JPEG...")
     for raww_img in img_paths:
         logger.info(f"Transforming image {raww_img} to JPEG...")
