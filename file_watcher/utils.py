@@ -94,7 +94,6 @@ def create_image_grid(get_event):
     grid.paste(images[1], (width, 0))
     grid.paste(images[2], (0, height))
     grid.paste(images[3], (width, height))
-    print("hehr")
     grid.save(f"{get_event['dir_trigger']}/image_grid.jpg")
 
 
