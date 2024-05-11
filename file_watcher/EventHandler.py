@@ -93,7 +93,6 @@ class CameraRecordingsFileHandler(PatternMatchingEventHandler):
                         })
 
 
-
 def start_watchdog(plotting_q: Queue, image_q: Queue, paths_to_watch: List[str]) -> None:
     """Starts the watchdog observer to monitor the specified directories for new files. Will monitor all subdirectories.
 

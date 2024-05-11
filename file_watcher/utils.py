@@ -1,7 +1,9 @@
 import logging
+import os.path
 import time
 import threading
 from typing import List
+from PIL import Image
 
 import matplotlib
 matplotlib.use('Agg')
@@ -74,15 +76,34 @@ def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
     plt.close()
 
 
-def raww_to_jpg(get_event):
-    logger.info(f"Transforming raww images to JPEG for {get_event['dir_path']}, Identifier: {get_event['id']}...")
-    location = get_event["dir_path"]
+def create_image_grid(get_event):
+    logger.info(f"Creating image grid for {get_event['dir_path']}, Identifier: {get_event['id']}...")
     img_paths: List[str] = get_event["images"]
     meta_path = get_event["meta"]
+    # transforming selected images to JPEG and storing them in corresponding recording directory
+    raww_to_jpg(img_paths, meta_path, get_event["dir_trigger"])
+    # create image grid for frontend visualization
+    # get file names for transformed images
+    image_files = image_files = [f"{os.path.join(get_event['dir_trigger'], os.path.split(f)[-1].split('.')[0])}.jpg"
+                                 for f in img_paths]
+    images = [Image.open(f) for f in image_files]
+    # assuming all images are the same size
+    width, height = images[0].size
+    grid = Image.new('RGB', (width * 2, height * 2), 'white')
+    grid.paste(images[0], (0, 0))
+    grid.paste(images[1], (width, 0))
+    grid.paste(images[2], (0, height))
+    grid.paste(images[3], (width, height))
+    print("hehr")
+    grid.save(f"{get_event['dir_trigger']}/image_grid.jpg")
+
+
+def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):
+    logger.info(f"Transforming raww images {img_paths} to JPEG...")
     for raww_img in img_paths:
         logger.info(f"Transforming image {raww_img} to JPEG...")
         try:
-            transform_image(path=raww_img, save_path=get_event["dir_trigger"], metadata_path=meta_path)
+            transform_image(path=raww_img, save_path=save_path, metadata_path=meta_path)
         except ValueError as e:
             logger.error(e)
             continue
