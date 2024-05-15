@@ -1,0 +1,120 @@
+import pytest
+import numpy as np
+from unittest.mock import patch, MagicMock
+from src.audio.daq_interface import DAQ_Device
+
+
+@pytest.fixture
+def mock_config():
+    return {
+        "analog_input_channels": ["ai0", "ai1"],
+        "digital_trigger_channel": "pfi5",
+        "sample_rate": 1000,
+        "number_of_samples": 1000
+    }
+
+
+@pytest.fixture
+def daq_device(mock_config):
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        return DAQ_Device(
+            from_config=True
+        )
+
+
+def test_init_from_config(daq_device, mock_config):
+    assert daq_device.analog_input_channels == mock_config["analog_input_channels"]
+    assert daq_device.digital_trig_channel == mock_config["digital_trigger_channel"]
+    assert daq_device.sample_rate == mock_config["sample_rate"]
+    assert daq_device.num_samples == mock_config["number_of_samples"]
+
+
+def test_init_from_valid_args():
+    sample_rate = 1000
+    num_samples = 1000
+    analog_input_channels = ["ai0", "ai1"]
+    digital_trig_channel = "pfi5"
+    daq_device = DAQ_Device(
+        sample_rate=sample_rate,
+        num_samples=num_samples,
+        analog_input_channels=analog_input_channels,
+        digital_trig_channel=digital_trig_channel
+    )
+    assert daq_device.analog_input_channels == analog_input_channels
+    assert daq_device.digital_trig_channel == digital_trig_channel
+    assert daq_device.sample_rate == sample_rate
+    assert daq_device.num_samples == num_samples
+
+
+def test_init_with_missing_args():
+    with pytest.raises(ValueError, match='analog_input_channels and digital_trig_channel need to be provided.'):
+        DAQ_Device()
+    with pytest.raises(ValueError, match='analog_input_channels and digital_trig_channel need to be provided.'):
+        DAQ_Device(sample_rate=10000, num_samples=1000)
+
+
+def test_init_with_invalid_args():
+    with pytest.raises(ValueError, match='analog_input_channels must be a list of strings.'):
+        DAQ_Device(sample_rate=1000, num_samples=1000, analog_input_channels="ai0", digital_trig_channel="pfi5")
+    with pytest.raises(ValueError, match='digital_trig_channel must be a string.'):
+        DAQ_Device(sample_rate=1000, num_samples=1000, analog_input_channels=["ai0", "ai1"], digital_trig_channel=["pfi5"])
+
+
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_select_daq_no_device_connected(mock_local_system, daq_device):
+    mock_local_system.return_value.devices = []
+    daq_device = DAQ_Device(from_config=True)
+    assert daq_device.device is None
+
+
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_select_daq_device_connected(mock_local_system):
+    mock_device = MagicMock()
+    mock_device.name = 'Dev1'
+    mock_local_system.return_value.devices = [mock_device]
+    daq = DAQ_Device(fro)
+    assert device == mock_device
+
+
+@patch('your_module.nidaqmx.system.System.local')
+def test_select_daq_with_device(mock_local_system):
+    mock_device = MagicMock()
+    mock_device.name = 'Dev1'
+    mock_local_system.return_value.devices = [mock_device]
+    device = DAQ_Device.__select_daq()
+    assert device == mock_device
+
+
+@patch('your_module.nidaqmx.Task')
+@patch('your_module.os.path.join')
+@patch('your_module.np.savetxt')
+def test_start_acquisition(mock_savetxt, mock_path_join, mock_nidaqmx_task, daq_device):
+    mock_task_in = MagicMock()
+    mock_task_trig = MagicMock()
+    mock_nidaqmx_task.side_effect = [mock_task_in, mock_task_trig]
+
+    mock_path_join.return_value = '/fake/path/measurements.csv'
+    mock_data = np.array([1, 2, 3, 4, 5])
+    mock_task_in.read.return_value = mock_data
+
+    daq_device.start_acquisition('/fake/path')
+
+    mock_task_in.ai_channels.add_ai_voltage_chan.assert_called()
+    mock_task_in.timing.cfg_samp_clk_timing.assert_called_with(
+        rate=daq_device.sample_rate,
+        sample_mode=mock_nidaqmx_task.FINITE,
+        samps_per_chan=daq_device.num_samples
+    )
+    mock_task_in.triggers.start_trigger.cfg_dig_edge_start_trig.assert_called()
+    mock_task_trig.do_channels.add_do_chan.assert_called()
+
+    mock_task_in.start.assert_called()
+    mock_task_trig.write.assert_any_call([True])
+    mock_task_trig.write.assert_any_call([False])
+
+    mock_task_in.read.assert_called_with(number_of_samples_per_channel=daq_device.num_samples)
+    mock_savetxt.assert_called_with('/fake/path/measurements.csv', mock_data, delimiter=',')
+
+
+if __name__ == "__main__":
+    pytest.main()
