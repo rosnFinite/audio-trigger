@@ -5,7 +5,7 @@ from queue import Queue
 from threading import Thread
 
 from .EventHandler import start_watchdog
-from .utils import create_visualizations, raww_to_jpg
+from .utils import create_visualizations, create_image_grid
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -36,7 +36,7 @@ def run_watcher(camera_recordings_path: str = None, client_recordings_path: str 
         if not plotting_queue.empty():
             pool.submit(create_visualizations, plotting_queue.get())
         if not camera_image_queue.empty():
-            pool.submit(raww_to_jpg, camera_image_queue.get())
+            pool.submit(create_image_grid, camera_image_queue.get())
         else:
             time.sleep(1)
 
