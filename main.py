@@ -1,12 +1,11 @@
 import logging
 import multiprocessing
 import time
-import os
 
-from backend.server import run_server
-from backend.client import run_client
-from file_watcher.watcher import run_watcher
-from config_utils import CONFIG
+from src.backend.server import run_server
+from src.backend.client import run_client
+from src.file_watcher.watcher import run_watcher
+from src.config_utils import CONFIG
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',

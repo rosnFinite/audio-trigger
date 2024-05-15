@@ -8,7 +8,7 @@ import numpy as np
 import plotly.graph_objs as go
 from typing import List, Optional, Tuple
 
-from audio.processing.scoring import calc_quality_score, fourier_transform
+from src.audio.processing.scoring import calc_quality_score, fourier_transform
 
 module_path = os.path.abspath(__file__)
 module_dir = os.path.dirname(module_path)
@@ -55,7 +55,7 @@ def load_recording_devices(recorder):
 
 def get_audio_file_names() -> List[dict[str, str]]:
     audio_files = [{"value": os.path.join(root, file), "label": file}
-                   for root, _, files in os.walk(os.path.join(module_dir, "../audio"))
+                   for root, _, files in os.walk(os.path.join(module_dir, "../src/audio"))
                    for file in files if file.endswith(".wav")]
     return audio_files
 

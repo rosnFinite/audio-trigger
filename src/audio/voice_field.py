@@ -2,7 +2,6 @@ import concurrent.futures
 import json
 import logging
 import os
-import shutil
 import threading
 import time
 from typing import Tuple, List, Optional, Union
@@ -11,8 +10,8 @@ import numpy as np
 import parselmouth
 import scipy.io.wavfile as wav
 
-from audio.processing.utility import measure_praat_stats
-from audio.daq_interface import DAQ_Device
+from src.audio.processing.utility import measure_praat_stats
+from src.audio.daq_interface import DAQ_Device
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

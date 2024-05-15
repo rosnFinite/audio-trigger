@@ -1,7 +1,7 @@
 # default location to which the trigger process will store its data (audio data, audio metrics, plots, etc.) for every trigger event
-client_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\backend\recordings
+client_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\src\backend\recordings
 # location to which the camera will store its recorded images (According to save settings inside the PFV4 Software)
-camera_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\backend\camera
+camera_recordings_path: C:\Users\fabio\PycharmProjects\audio-trigger\src\backend\camera
 
 # When working with the web application, most of the following configuration can be set inside the web application itself
 # Configuration only changeable via this file will be marked with 'CONFIGURATION ONLY CHANGEABLE VIA THIS FILE'

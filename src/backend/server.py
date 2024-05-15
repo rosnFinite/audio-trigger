@@ -8,7 +8,7 @@ from flask import Flask, request, send_from_directory, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
-from audio.recorder import AudioRecorder
+from src.audio.recorder import AudioRecorder
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -30,7 +30,8 @@ this = sys.modules[__name__]
 # each client is represented by a dictionary (key = session ID, value = client type("web" or "audio"))
 this.connected_clients = []
 
-
+#TODO: update paths to use path defined in config file
+#TODO: update paths to work with new file structure
 def check_registration(sid: str) -> bool:
     """Check if the client with the given session ID is registered.
 

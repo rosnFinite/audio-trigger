@@ -7,7 +7,7 @@ import logging
 
 from typing import List, Dict
 
-from audio.recorder import Trigger
+from src.audio.recorder import Trigger
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

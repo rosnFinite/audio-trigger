@@ -8,7 +8,7 @@ import nidaqmx.errors
 import nidaqmx.system
 import numpy as np
 
-from config_utils import CONFIG
+from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -16,11 +16,11 @@ logger.setLevel(logging.DEBUG)
 
 class DAQ_Device:
     def __init__(self,
-                 sample_rate: int,
-                 num_samples: int,
-                 analog_input_channels: List[str],
-                 digital_trig_channel: str,
-                 device_id: str = None,
+                 sample_rate: Optional[int] = 1000,
+                 num_samples: Optional[int] = 1000,
+                 analog_input_channels: Optional[List[str]] = None,
+                 digital_trig_channel: Optional[str] = None,
+                 device_id: Optional[str] = None,
                  from_config: bool = False):
         self.device = self.__select_daq(device_id)
         if from_config:
@@ -29,6 +29,12 @@ class DAQ_Device:
             self.sample_rate = CONFIG["sample_rate"]
             self.num_samples = CONFIG["number_of_samples"]
         else:
+            if analog_input_channels is None or digital_trig_channel is None:
+                raise ValueError("analog_input_channels and digital_trig_channel need to be provided.")
+            if type(analog_input_channels) is not list:
+                raise ValueError("analog_input_channels must be a list of strings.")
+            if type(digital_trig_channel) is not str:
+                raise ValueError("digital_trig_channel must be a string.")
             self.analog_input_channels = analog_input_channels
             self.digital_trig_channel = digital_trig_channel
             self.sample_rate = sample_rate

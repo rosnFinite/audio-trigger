@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 
 import numpy as np
 
-from audio.processing.utility import bisection, freezeargs
+from src.audio.processing.utility import bisection, freezeargs
 
 
 def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, float]] = None) -> float:

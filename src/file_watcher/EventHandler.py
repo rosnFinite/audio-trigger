@@ -9,7 +9,7 @@ import parselmouth
 from watchdog.events import PatternMatchingEventHandler, FileSystemEvent
 from watchdog.observers import Observer
 
-from config_utils import CONFIG
+from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)

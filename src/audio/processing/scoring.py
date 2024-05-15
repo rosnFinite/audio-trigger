@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import numpy as np
 import parselmouth
 
-from audio.processing.frequency import fourier_transform
+from src.audio.processing.frequency import fourier_transform
 
 
 def calc_quality_score(data: Optional[np.ndarray] = None,

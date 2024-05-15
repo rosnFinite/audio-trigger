@@ -15,7 +15,7 @@ import socketio
 from .voice_field import VoiceField
 from .processing.db import get_dba_level
 from .processing.scoring import calc_pitch_score
-from config_utils import CONFIG
+from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -451,5 +451,5 @@ class Trigger(AudioRecorder):
 
 
 if __name__ == "__main__":
-    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="../calibration/Behringer.json", min_q_score=100)
+    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="../../calibration/Behringer.json", min_q_score=100)
     trigger.start_trigger(1)

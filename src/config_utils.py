@@ -1,4 +1,8 @@
 import yaml
+import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_config() -> dict:
@@ -10,13 +14,14 @@ def get_config() -> dict:
     dict
         Dictionary containing the configuration settings.
     """
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_dir = os.path.abspath(os.path.join(script_dir, ".."))
+    path_to_config = os.path.join(project_dir, "config.yaml")
     if not hasattr(get_config, "config"):
-        with open("config.yaml") as file:
+        logger.info(f"Loading config from {path_to_config}")
+        with open(path_to_config) as file:
             get_config.config = yaml.load(file, Loader=yaml.FullLoader)
     return get_config.config
 
 
 CONFIG = get_config()
-
-if __name__ == "__main__":
-    print(CONFIG)

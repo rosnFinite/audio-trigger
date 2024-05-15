@@ -13,15 +13,15 @@ sys.path.append("D:\\rosef\\audio-trigger")
 
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
-from audio.recorder import Trigger
+from src.audio.recorder import Trigger
 from utility import load_recording_devices, default_plot, get_audio_file_names, get_calibration_file_names, plot_abs_fft
-from audio.processing.db import get_dba_level
+from src.audio.processing.db import get_dba_level
 
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]
 
 recorder = Trigger(buffer_size=0.2, rec_destination="DUMMY")
-signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunksize - 1, -1, -1)]
+signal_graph_x = [x for x in range(recorder.frames.maxlen * recorder.chunk_size - 1, -1, -1)]
 
 # key is dB(A), value list of 3 entries [#measurements, average uncalibrated db(A), difference]
 this.corr_dict = dict()
@@ -204,7 +204,8 @@ def update_live_graph(n_intervals: int, value: str) -> Tuple[go.Figure, go.Figur
     signal_fig.add_trace(go.Scatter(x=signal_graph_x, y=data))
     # Plot for frequencies
     freq_fig, note, score = plot_abs_fft(data, recorder.rate)
-    heatmap = recorder.grid.create_heatmap()
+    # TODO: Function to display simple heatmap (not important as a mor sophisticated webapp exists)
+    heatmap = default_plot
     if recorder.calib_factors is not None:
         dba = get_dba_level(data, recorder.rate, recorder.calib_factors)
         return signal_fig, freq_fig, heatmap, f"{note} [{score:.2f}] [{dba:.2f}dB(A)]"
@@ -229,7 +230,7 @@ def update_file_graph(n_clicks: int, file_select_value: str) -> Tuple[go.Figure,
     :param file_select_value: Audio file selected in dropdown menu
     :return:
     """
-    rate, data = scipy.io.wavfile.read(os.path.join("../audio", file_select_value))
+    rate, data = scipy.io.wavfile.read(os.path.join("../src/audio", file_select_value))
     signal_fig = go.Figure()
     signal_fig.update_layout(
         margin=dict(l=5, r=5, t=5, b=10),

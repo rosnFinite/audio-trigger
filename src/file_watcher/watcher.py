@@ -42,6 +42,6 @@ def run_watcher(camera_recordings_path: str = None, client_recordings_path: str 
 
 
 if __name__ == "__main__":
-    dir_path = "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\backend\\recordings"
+    dir_path = "/backend/recordings"
 
     run_watcher(dir_path)

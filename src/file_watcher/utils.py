@@ -10,7 +10,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 
-from photron_raww.raww_visualizer import transform_image
+from src.photron_raww.raww_visualizer import transform_image
 
 plot_lock = threading.Lock()
 
