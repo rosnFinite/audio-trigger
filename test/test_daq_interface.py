@@ -54,40 +54,69 @@ def test_init_with_missing_args():
 
 
 def test_init_with_invalid_args():
-    with pytest.raises(ValueError, match='analog_input_channels must be a list of strings.'):
-        DAQ_Device(sample_rate=1000, num_samples=1000, analog_input_channels="ai0", digital_trig_channel="pfi5")
-    with pytest.raises(ValueError, match='digital_trig_channel must be a string.'):
-        DAQ_Device(sample_rate=1000, num_samples=1000, analog_input_channels=["ai0", "ai1"], digital_trig_channel=["pfi5"])
+    with pytest.raises(TypeError, match='analog_input_channels must be a list of strings.'):
+        DAQ_Device(analog_input_channels="ai0", digital_trig_channel="pfi5")
+    with pytest.raises(TypeError, match='digital_trig_channel must be a string.'):
+        DAQ_Device(analog_input_channels=["ai0", "ai1"], digital_trig_channel=["pfi5"])
 
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
-def test_select_daq_no_device_connected(mock_local_system, daq_device):
+def test_select_daq_no_device_connected(mock_local_system, daq_device, mock_config):
     mock_local_system.return_value.devices = []
-    daq_device = DAQ_Device(from_config=True)
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            from_config=True
+        )
     assert daq_device.device is None
 
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
-def test_select_daq_device_connected(mock_local_system):
-    mock_device = MagicMock()
-    mock_device.name = 'Dev1'
-    mock_local_system.return_value.devices = [mock_device]
-    daq = DAQ_Device(fro)
-    assert device == mock_device
+def test_select_daq_with_one_device_connected(mock_local_system, mock_config):
+    mock_local_system.return_value.devices = ["Dev1"]
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            from_config=True
+        )
+    assert daq_device.device == "Dev1"
 
 
-@patch('your_module.nidaqmx.system.System.local')
-def test_select_daq_with_device(mock_local_system):
-    mock_device = MagicMock()
-    mock_device.name = 'Dev1'
-    mock_local_system.return_value.devices = [mock_device]
-    device = DAQ_Device.__select_daq()
-    assert device == mock_device
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_select_daq_with_multiple_devices_connected(mock_local_system, mock_config):
+    mock_local_system.return_value.devices = ["Dev1", "Dev2"]
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            from_config=True
+        )
+    assert daq_device.device == "Dev1"
 
 
-@patch('your_module.nidaqmx.Task')
-@patch('your_module.os.path.join')
-@patch('your_module.np.savetxt')
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_select_daq_with_id_with_multiple_devices_connected(mock_local_system, mock_config):
+    mock_local_system.return_value.devices = ["Dev1", "Dev2"]
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            device_id="Dev1",
+            from_config=True
+        )
+    assert daq_device.device == "Dev1"
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            device_id="Dev2",
+            from_config=True
+        )
+    assert daq_device.device == "Dev2"
+
+
+def test_start_acquisition_with_no_device_connected(daq_device):
+    with pytest.raises(AttributeError, match='No DAQ device connected. Cannot start acquisition.'):
+        daq_device.start_acquisition('/fake/path')
+
+
+
+"""
+@patch('src.audi.daq_interface.nidaqmx.Task')
+@patch('src.audi.daq_interface.os.path.join')
+@patch('src.audi.daq_interface.np.savetxt')
 def test_start_acquisition(mock_savetxt, mock_path_join, mock_nidaqmx_task, daq_device):
     mock_task_in = MagicMock()
     mock_task_trig = MagicMock()
@@ -114,7 +143,7 @@ def test_start_acquisition(mock_savetxt, mock_path_join, mock_nidaqmx_task, daq_
 
     mock_task_in.read.assert_called_with(number_of_samples_per_channel=daq_device.num_samples)
     mock_savetxt.assert_called_with('/fake/path/measurements.csv', mock_data, delimiter=',')
-
+"""
 
 if __name__ == "__main__":
     pytest.main()

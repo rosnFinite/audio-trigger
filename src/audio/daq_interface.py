@@ -32,9 +32,9 @@ class DAQ_Device:
             if analog_input_channels is None or digital_trig_channel is None:
                 raise ValueError("analog_input_channels and digital_trig_channel need to be provided.")
             if type(analog_input_channels) is not list:
-                raise ValueError("analog_input_channels must be a list of strings.")
+                raise TypeError("analog_input_channels must be a list of strings.")
             if type(digital_trig_channel) is not str:
-                raise ValueError("digital_trig_channel must be a string.")
+                raise TypeError("digital_trig_channel must be a string.")
             self.analog_input_channels = analog_input_channels
             self.digital_trig_channel = digital_trig_channel
             self.sample_rate = sample_rate
@@ -86,7 +86,7 @@ class DAQ_Device:
             Parent directory path where the acquired data will be saved as 'measurements.csv'.
         """
         if self.device is None:
-            return
+            raise AttributeError("No DAQ device connected. Cannot start acquisition.")
         with nidaqmx.Task() as task_in, nidaqmx.Task() as task_trig:
             # configure analog input channels
             for ai_channel in self.analog_input_channels:
