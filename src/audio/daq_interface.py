@@ -86,7 +86,7 @@ class DAQ_Device:
             Parent directory path where the acquired data will be saved as 'measurements.csv'.
         """
         if self.device is None:
-            raise AttributeError("No DAQ device connected. Cannot start acquisition.")
+            return
         with nidaqmx.Task() as task_in, nidaqmx.Task() as task_trig:
             # configure analog input channels
             for ai_channel in self.analog_input_channels:
