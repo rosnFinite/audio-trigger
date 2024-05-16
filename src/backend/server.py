@@ -9,6 +9,7 @@ from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
 from src.audio.recorder import AudioRecorder
+from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -100,7 +101,7 @@ def get_image(parent_dir: str, sub_dir: str, img: str) -> tuple[Response, int] |
     """
     logger.info(f"GET /recordings/{parent_dir}/{sub_dir}/{img} received.")
     if img.endswith(".jpg") or img.endswith(".png"):
-        return send_from_directory("recordings", f"{parent_dir}/{sub_dir}/{img}"), 200
+        return send_from_directory(CONFIG["client_recordings_path"], f"{parent_dir}/{sub_dir}/{img}"), 200
     else:
         logger.critical(f"[GET /recordings/{parent_dir}/{sub_dir}/{img}] Invalid file extension.")
         return {"message": "Provided file extension is not allowed"}, 406
@@ -110,10 +111,11 @@ def get_image(parent_dir: str, sub_dir: str, img: str) -> tuple[Response, int] |
 def get_parselmouth_stats(parent_dir: str, sub_dir: str) -> tuple[dict[str, str], int] | tuple[Response, int]:
     # check if file exists
     logger.info(f"GET /recordings/{parent_dir}/{sub_dir}/parsel received.")
-    if not os.path.exists(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")):
-        logger.critical(f"GET /recordings/{parent_dir}/{sub_dir}/parsel File not found.")
+    file_path = os.path.join(CONFIG["client_recordings_path"], parent_dir, sub_dir, "parsel_stats.txt")
+    if not os.path.exists(file_path):
+        logger.critical(f"GET /recordings/{parent_dir}/{sub_dir}/parsel File not found: {file_path}")
         return {"message": "File not found"}, 404
-    with open(os.path.join(os.getcwd(), "backend", "recordings", parent_dir, sub_dir, "parsel_stats.txt")) as f:
+    with open(file_path) as f:
         data = f.read()
     return jsonify({"text_content": data}), 200
 

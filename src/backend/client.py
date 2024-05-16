@@ -8,6 +8,7 @@ import logging
 from typing import List, Dict
 
 from src.audio.recorder import Trigger
+from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -53,9 +54,9 @@ def on_settings_change(settings: dict) -> None:
     logger.info("Change settings event received. Creating new trigger instance..")
     # build path for recordings/measurements  <patient>_<timestamp> if patient is set
     if settings["patient"] == "":
-        destination = os.path.join(os.getcwd(), "backend", "recordings", f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
+        destination = os.path.join(CONFIG["client_recordings_path"], f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
     else:
-        destination = os.path.join(os.getcwd(), "backend", "recordings", f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
+        destination = os.path.join(CONFIG["client_recordings_path"], f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
 
     this.trigger = Trigger(rec_destination=destination,
                            min_score=settings["min_score"],
