@@ -37,7 +37,9 @@ def create_visualizations(get_event):
     spectrogram = sound.to_spectrogram()
     pitch = sound.to_pitch()
     
-    egg_data = np.load(f"{parent_dir}/egg.npy")
+    egg_path = os.path.join(parent_dir, "egg.npy")
+    if os.path.exists(egg_path):
+        egg_data = np.load(egg_path)
 
     with plot_lock:
         plot_waveform(sound, parent_dir)
