@@ -110,11 +110,19 @@ class DAQ_Device:
                 lines=f"/{self.device.name}/{self.digital_trig_channel}",
                 line_grouping=nidaqmx.constants.LineGrouping.CHAN_PER_LINE
             )
-
-            task_in.start()
-
-            task_trig.write([True])
-            task_trig.write([False])
-
-            data = np.array(task_in.read(number_of_samples_per_channel=self.num_samples))
-        np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",")
+            
+            data = None
+            try:
+                task_in.start()
+                
+                task_trig.write([True])
+                task_trig.write([False])
+                
+                data = np.array(task_in.read(number_of_samples_per_channel=self.num_samples))
+            except nidaqmx.errors.DaqError:
+                logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
+        if data is not None:
+            np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",")
+        else:
+            with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
+                print("Critical error occured. DAQ measurement process could NOT be started. Check if another program is reserving/using DAQ resources.", file=error_file)
