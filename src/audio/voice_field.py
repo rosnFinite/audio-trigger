@@ -213,9 +213,13 @@ class VoiceField:
         with self._file_lock:
             try:
                 start_save = time.time()
-                file_path = f"{save_dir}/input_data.npy"
+                file_path = f"{save_dir}/audio.npy"
                 with open(file_path, "wb") as f:
-                    np.save(f, trigger_data["data"])
+                    np.save(f, trigger_data["audio"])
+                if trigger_data["egg"] is not None:
+                    file_path = f"{save_dir}/egg.npy"
+                    with open(file_path, "wb") as f:
+                        np.save(f, trigger_data["egg"])
                 with open(f"{save_dir}/meta.json", "w") as f:
                     json_object = json.dumps({
                         "frequency_bin": int(freq_bin),
@@ -227,7 +231,7 @@ class VoiceField:
                         **praat_stats
                     }, indent=4)
                     f.write(json_object)
-                wav.write(f"{save_dir}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["data"])
+                wav.write(f"{save_dir}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["audio"])
                 logger.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
             except Exception as e:
                 logger.error(f"Thread [{id}]: error saving data: {e}")

@@ -427,14 +427,15 @@ class Trigger(AudioRecorder):
                 return input_data, pyaudio.paContinue
 
         if len(self.frames) == self.frames.maxlen:
-            data = self.get_audio_data()
-            sound = parselmouth.Sound(data, sampling_frequency=self.rate)
+            audio = self.get_audio_data()
+            egg = self.get_egg_data()
+            sound = parselmouth.Sound(audio, sampling_frequency=self.rate)
             score, dom_freq = calc_pitch_score(sound=sound,
                                                freq_floor=self.voice_field.freq_bins_lb[0],
                                                freq_ceiling=self.rate // 2)
-            dba_level = get_dba_level(data, self.rate, corr_dict=self.calib_factors)
+            dba_level = get_dba_level(audio, self.rate, corr_dict=self.calib_factors)
             is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
-                                                     trigger_data={"data": data, "sampling_rate": self.rate})
+                                                     trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
             if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))

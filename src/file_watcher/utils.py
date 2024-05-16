@@ -27,7 +27,6 @@ def create_visualizations(get_event):
     get_event : dict
         Dictionary containing information about the event.
     """
-    start = time.time()
     logger.info(f"Creating visualizations for {get_event['dir_path']}, Identifier: {get_event['id']} ...")
     logger.info(f"Plotting waveform for {get_event['dir_path']}...")
 
@@ -37,10 +36,13 @@ def create_visualizations(get_event):
     intensity = sound.to_intensity()
     spectrogram = sound.to_spectrogram()
     pitch = sound.to_pitch()
+    
+    egg_data = np.load(f"{parent_dir}/egg.npy")
 
     with plot_lock:
         plot_waveform(sound, parent_dir)
         plot_spectrogram_and_intensity(sound, spectrogram, intensity, parent_dir)
+        plot_egg_data(egg_data, parent_dir)
     # store parselmouth pitch information
 
     with open(f"{parent_dir}/parsel_stats.txt", "w") as f:
@@ -82,6 +84,8 @@ def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
         Spectrogram object.
     intensity : Parselmouth.Intensity
         Intensity object.
+    location: str
+        The directory where the plot will be saved.
     """
     plt.figure()
 
@@ -103,6 +107,24 @@ def plot_spectrogram_and_intensity(sound, spectrogram, intensity, location):
     plt.xlim([sound.xmin, sound.xmax])
     plt.savefig(f"{location}/spectrogram_intensity.png")
     logger.info(f"Spectrogram and intensity plot saved to {location}\\spectrogram_intensity.png")
+    plt.close()
+    
+
+def plot_egg_data(egg, location):
+    """
+    Creates a plot of the EGG data.
+    
+    Parameters
+    ----------
+    egg: np.ndarray
+        EGG data to be plotted.
+    location: str
+        The directory where the plot will be saved.
+    """
+    plt.figure()
+    
+    plt.plot(egg)
+    plt.savefig(f"{location}/egg.png")
     plt.close()
 
 
