@@ -425,6 +425,11 @@ class Trigger(AudioRecorder):
             if time_diff < 1:
                 logger.debug(f"Trigger callback processing temporarily disabled. Time diff: {time_diff} < 1")
                 return input_data, pyaudio.paContinue
+            else:
+                # update status to running if timeout is over
+                if self.socket is not None:
+                    self.socket.emit("status_update_complete", {"status": "running", "save_location": self.rec_destination})
+                    self.__last_trigger_time = None
 
         if len(self.frames) == self.frames.maxlen:
             audio = self.get_audio_data()
@@ -440,6 +445,9 @@ class Trigger(AudioRecorder):
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))
                 self.__last_trigger_time = time.time()
+                if self.socket is not None:
+                    # update status to waiting if trigger was detected
+                    self.socket.emit("status_update_complete", {"status": "waiting", "save_location": self.rec_destination})
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self) -> None:
