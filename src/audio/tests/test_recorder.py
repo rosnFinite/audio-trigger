@@ -7,7 +7,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
-from src.audio.recorder import AudioRecorder, Trigger
+from src.audio.recorder import AudioRecorder, AudioTriggerRecorder
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +36,7 @@ def mock_config():
 @pytest.fixture
 def trigger(mock_config):
     with patch('src.audio.recorder.CONFIG', mock_config):
-        return Trigger(from_config=True)
+        return AudioTriggerRecorder(from_config=True)
 
 
 def test_audio_recorder_initialization(audio_recorder):
@@ -222,7 +222,7 @@ def test_stop_stream_no_stream_running(audio_recorder):
 
     assert audio_recorder.stream_thread_is_running is False
 
-# Test cases for Trigger class
+# Test cases for AudioTriggerRecorder class
 
 def test_audio_trigger_initialization(trigger):
     assert trigger.chunk_size == 1024
@@ -273,7 +273,7 @@ def test_settings(trigger):
 @patch("src.audio.recorder.os.path.exists", return_value=True)
 @patch("src.audio.recorder.os.makedirs")
 def test_check_rec_destination(mock_makedirs, mock_path_exists, trigger):
-    trigger = Trigger(rec_destination="C:/tests/recordings")
+    trigger = AudioTriggerRecorder(rec_destination="C:/tests/recordings")
     assert trigger.rec_destination == "C:/tests/recordings"
     assert mock_path_exists.called
     assert mock_makedirs.called is False
@@ -282,7 +282,7 @@ def test_check_rec_destination(mock_makedirs, mock_path_exists, trigger):
 @patch("src.audio.recorder.os.path.exists", return_value=False)
 @patch("src.audio.recorder.os.makedirs")
 def test_check_rec_destination_path_not_exists(mock_os_makedirs, mock_path_exists):
-    Trigger(rec_destination="C:/tests/recordings")
+    AudioTriggerRecorder(rec_destination="C:/tests/recordings")
     assert mock_path_exists.called
     assert mock_os_makedirs.called_with("C:/tests/recordings")
 
@@ -290,14 +290,14 @@ def test_check_rec_destination_path_not_exists(mock_os_makedirs, mock_path_exist
 @patch("src.audio.recorder.json.load", return_value={"37": [1, 17.8, 20], "45": [1, 18.5, 28], "50": [1, 20.1, 30]})
 def test_load_calib_factors(mock_json_load):
     with patch('builtins.open', unittest.mock.mock_open()):
-        trigger = Trigger(dba_calib_file="/fake/path.json")
+        trigger = AudioTriggerRecorder(dba_calib_file="/fake/path.json")
     assert trigger.calib_factors == {17.8: 20, 18.5: 28, 20.1: 30}
     assert mock_json_load.called_once()
 
 
 def test_load_calib_factors_wrong_file_type():
     with pytest.raises(ValueError, match="Invalid file format. JSON file required."), patch('builtins.open', unittest.mock.mock_open()):
-        Trigger(dba_calib_file="/fake/path.txt")
+        AudioTriggerRecorder(dba_calib_file="/fake/path.txt")
 
 
 

@@ -233,7 +233,7 @@ class AudioRecorder:
         self.p.terminate()
 
 
-class Trigger(AudioRecorder):
+class AudioTriggerRecorder(AudioRecorder):
     """A class for continuously recording audio data from a specified input device and triggering on specific audio events.
 
     Parameters
@@ -425,7 +425,7 @@ class Trigger(AudioRecorder):
         if self.__last_trigger_time is not None:
             time_diff = time.time() - self.__last_trigger_time
             if time_diff < 1:
-                logger.debug(f"Trigger callback processing temporarily disabled. Time diff: {time_diff} < 1")
+                logger.debug(f"AudioTriggerRecorder callback processing temporarily disabled. Time diff: {time_diff} < 1")
                 return input_data, pyaudio.paContinue
             else:
                 # update status to running if timeout is over
@@ -458,9 +458,9 @@ class Trigger(AudioRecorder):
         logger.info("Stopping trigger...")
         super().stop_stream()
         self.voice_field.pool.shutdown(wait=True)
-        logger.info("Trigger stopped successfully.")
+        logger.info("AudioTriggerRecorder stopped successfully.")
 
 
 if __name__ == "__main__":
-    trigger = Trigger(channels=1, buffer_size=0.2, dba_calib_file="../../calibration/Behringer.json", min_q_score=100)
+    trigger = AudioTriggerRecorder(channels=1, buffer_size=0.2, dba_calib_file="../../calibration/Behringer.json", min_q_score=100)
     trigger.start_trigger(1)

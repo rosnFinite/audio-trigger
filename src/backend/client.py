@@ -7,7 +7,7 @@ import logging
 
 from typing import List, Dict
 
-from src.audio.recorder import Trigger
+from src.audio.recorder import AudioTriggerRecorder
 from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ def on_settings_change(settings: dict) -> None:
     else:
         destination = os.path.join(CONFIG["client_recordings_path"], f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
 
-    this.trigger = Trigger(rec_destination=destination,
+    this.trigger = AudioTriggerRecorder(rec_destination=destination,
                            min_score=settings["min_score"],
                            retrigger_percentage_improvement=settings["retrigger_percentage_improvement"],
                            semitone_bin_size=settings["frequency"]["steps"],
@@ -103,12 +103,12 @@ def on_status_update(action: dict) -> None:
         # only do smth if trigger is currently running
         if this.trigger.stream_thread_is_running:
             this.trigger.stop_trigger()
-            logger.info("Trigger stopped.")
+            logger.info("AudioTriggerRecorder stopped.")
             client.emit("status_update_complete", {"status": "ready", "save_location": this.trigger.rec_destination})
     if action["trigger"] == "reset":
         if not this.trigger.stream_thread_is_running:
             new_rec_destination = this.trigger.voice_field.reset_grid()
-            logger.info("Trigger reset.")
+            logger.info("AudioTriggerRecorder reset.")
             client.emit("status_update_complete", {"status": "reset", "save_location": new_rec_destination})
 
 
