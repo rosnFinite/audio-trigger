@@ -17,6 +17,549 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
+class VoiceField2:
+    def __init__(self,
+                 semitone_bin_size: int = 2,
+                 freq_bounds: Tuple[float, float] = (55, 1600),
+                 db_bin_size: int = 5,
+                 db_bounds: Tuple[int, int] = (35, 115)):
+        # Creation of lower bounds for frequency and dba heatmap bins as well as cutoff (highest allowed value)
+        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
+        self.freq_cutoff: float = round(np.power(2, semitone_bin_size / 12) * self.freq_bins_lb[-1], 3)
+        self.db_bins_lb: List[int] = self.__calc_dba_lower_bounds(db_bin_size, db_bounds)
+        self.db_cutoff: int = self.db_bins_lb[-1] + db_bin_size
+        # Creation of the grid
+        self.grid: List[List[Optional[float]]] = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
+        logger.info(
+            f"Created voice field with {self.num_freq_bins}[frequency bins] x {self.num_db_bins}[dba bins].")
+
+    @property
+    def freq_min(self) -> float:
+        """The minimum frequency of the voice field."""
+        return self.freq_bins_lb[0]
+
+    @property
+    def freq_max(self) -> float:
+        """The maximum frequency of the voice field."""
+        return self.freq_cutoff
+
+    @property
+    def num_freq_bins(self) -> int:
+        """The number of frequency bins in the voice field."""
+        return len(self.freq_bins_lb)
+
+    @property
+    def db_min(self) -> int:
+        """The minimum db(A) level of the voice field."""
+        return self.db_bins_lb[0]
+
+    @property
+    def db_max(self) -> int:
+        """The maximum db(A) level of the voice field."""
+        return self.db_cutoff
+
+    @property
+    def num_db_bins(self) -> int:
+        """The number of frequency bins in the voice field."""
+        return len(self.freq_bins_lb)
+
+    @staticmethod
+    def __check_bounds(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
+        """Check if the provided bounds are valid.
+
+        Parameters
+        ----------
+        bounds : Union[Tuple[float, float], Tuple[int, int]]
+            The bounds to check.
+
+        Returns
+        -------
+        bool
+            True if the bounds are valid, False otherwise.
+        """
+        if len(bounds) != 2:
+            return False
+        if bounds[0] == bounds[1]:
+            return False
+        return True
+
+    def __index_in_bounds(self, db_bin: int, freq_bin: int) -> bool:
+        """
+        Checks if the given dB(A) and frequency bin indices are within bounds.
+
+        This method verifies whether the provided dB(A) bin and frequency bin indices are within the acceptable
+        range defined by the instance attributes. If either index is out of bounds, False is returned.
+
+        Parameters
+        ----------
+        db_bin : int
+            The dB(A) bin index to check.
+        freq_bin : int
+            The frequency bin index to check.
+
+        Returns
+        -------
+        bool
+            True if both indices are within bounds. False otherwise.
+
+
+        Notes
+        -----
+        - The method checks that `dba_bin` is between `self.dba_min` and `self.dba_max` (inclusive).
+        - It also checks that `freq_bin` is between `self.freq_min` and `self.freq_max` (inclusive).
+
+        Examples
+        --------
+        For indexing a grid with shape (5,5)
+        >>> __index_in_bounds(2, 2)
+        True
+
+        >>> __index_in_bounds(10, 5)
+        False
+        """
+        if not (self.db_min <= db_bin <= self.db_max and self.freq_min <= freq_bin <= self.freq_max):
+            return False
+        return True
+
+    def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
+        """Calculate the lower bounds of the frequency bins.
+
+        Parameters
+        ----------
+        semitone_bin_size : int
+            The size of each semitone bin.
+        freq_bounds : Tuple[float, float]
+            The lower and upper bounds of the frequency range.
+
+        Returns
+        -------
+        List[float]
+            The lower bounds of the frequency bins.
+        """
+        if not self.__check_bounds(freq_bounds):
+            logger.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
+                            f"Got {freq_bounds}")
+            raise ValueError(f"Provided frequency bounds {freq_bounds} are not valid.")
+        # arbitrary start point for semitone calculations
+        lower_bounds = []
+        current_freq = min(freq_bounds)
+        while current_freq < max(freq_bounds):
+            lower_bounds.append(current_freq)
+            current_freq = round(np.power(2, semitone_bin_size / 12) * lower_bounds[-1], 3)
+        return lower_bounds
+
+    def __calc_dba_lower_bounds(self, db_bin_size: int, db_bounds: Tuple[int, int]) -> List[int]:
+        """Calculate the lower bounds of the db(A) bins.
+
+        Parameters
+        ----------
+        db_bin_size : int
+            The size of each db(A) bin.
+        db_bounds : Tuple[int, int]
+            The lower and upper bounds of the db(A) range.
+
+        Returns
+        -------
+        List[int]
+            The lower bounds of the db(A) bins.
+        """
+        if not self.__check_bounds(db_bounds):
+            logger.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
+                            f"Got {db_bounds}")
+            raise ValueError(f"Provided db(A) bounds {db_bounds} are not valid.")
+        lower_bounds = [min(db_bounds)]
+        while lower_bounds[-1] < max(db_bounds):
+            lower_bounds.append(lower_bounds[-1] + db_bin_size)
+        return lower_bounds
+
+    def reset_grid(self) -> str:
+        """Resets the grid to its initial state and creates a new recording directory. The new directory will use the
+        name of the previous directory with an incremented number at the end.
+        <prefix>_<date>_<time> -> <prefix>_<date>_<time>_<version> where version is the incremented number.
+
+        Returns
+        -------
+        str
+            The path to the newly created recording directory.
+        """
+        self.grid = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
+        # TODO: Needs to happen in Trigger
+        """
+        logger.info(f"Voice field grid reset. New recording directory created: {self.rec_destination}")
+        return self.__create_versioned_dir(self.rec_destination)
+        """
+
+    def get_score_at(self, db_bin: int, freq_bin: int) -> Optional[float]:
+        """The score at the specified db(A) and frequency bin."""
+        if self.__index_in_bounds(db_bin, freq_bin):
+            return self.grid[db_bin][freq_bin]
+        else:
+            raise LookupError(f"Index out of bounds for grid shape ({self.num_db_bins}, {self.num_freq_bins}): "
+                              f"dba_bin: {db_bin}, freq_bin: {freq_bin}")
+
+    def update_grid_at(self, db_bin: int, freq_bin: int, score: float) -> None:
+        """Updates the grid with a new score.
+
+        Parameters
+        ----------
+        db_bin : int
+            The db(A) bin index.
+        freq_bin : int
+            The frequency bin index.
+        score : float
+            The quality score to update the grid with.
+        """
+        if self.__index_in_bounds(db_bin, freq_bin):
+            self.grid[db_bin][freq_bin] = score
+        else:
+            raise LookupError(f"Index out of bounds for grid shape ({self.num_db_bins}, {self.num_freq_bins}): "
+                              f"dba_bin: {db_bin}, freq_bin: {freq_bin}")
+
+
+class Trigger:
+    """
+    Class for controlling the trigger process of incoming audio data. The trigger process is responsible for
+    acquisition of all data sources (audio, EGG, etc.), processing the data and saving it to the disk.
+    """
+
+    def __init__(self,
+                 voice_field: VoiceField2,
+                 rec_destination: str,
+                 min_score: float = 0.7,
+                 retrigger_percentage_improvement: float = 0.1,
+                 socket=None):
+        self.rec_destination = rec_destination
+        self.min_score = min_score
+        self.retrigger_percentage_improvement = retrigger_percentage_improvement
+        self.socket = socket
+        self.daq = DAQ_Device(from_config=True)
+        self.voice_field = voice_field
+
+        # attributes for the thread pool
+        self._file_lock = threading.Lock()
+        self.id = 0
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+    @staticmethod
+    def __create_versioned_dir(path: str) -> str:
+        """
+        Creates a versioned directory.
+
+        This method checks if the provided directory exists and increments the version number if it does. It ensures
+        that a new directory is created and returns its path.
+
+        Process description:
+        --------------------
+        If the path does not exist:
+            - Create the provided directory.
+            - Return the path.
+        If the path exists:
+            - Check the version number of directories with the same name <path>_<version>.
+            - Increment the version number of the highest version found by 1.
+            - Create the new directory with the incremented version number.
+            - Return the path of the newly created directory.
+
+        Parameters
+        ----------
+        path : str
+            The path to the directory to increment.
+
+        Returns
+        -------
+        str
+            The path to the newly created directory.
+        """
+        original_path = path
+        version = 0
+        while os.path.exists(path):
+            version += 1
+            path = os.path.join(os.path.dirname(original_path), f"{os.path.basename(original_path)}_{version}")
+        logger.info(f"Creating new directory: {path}")
+        os.makedirs(path)
+        return path
+
+    def __submit_threadpool_task(self, task, *args):
+        """
+        Submits a task to a thread pool for concurrent execution.
+
+        This method attempts to submit a given task to a thread pool. If the thread pool has already been shut down,
+        a RuntimeError is caught, a warning is logged, and a new thread pool is created before resubmitting the task.
+        The method ensures that the thread pool is initialized with a maximum of 4 workers.
+
+        Parameters
+        ----------
+        task : callable
+            The task (function) to be executed concurrently.
+        *args
+            Variable length argument list to be passed to the task.
+
+        Notes
+        -----
+        - If a RuntimeError occurs due to the ThreadPoolExecutor being already shut down, the thread pool is
+          reinitialized with a maximum of 4 workers, and the task is resubmitted.
+        - This method handles non-critical errors related to stopping and restarting the same trigger instance,
+          ensuring the thread pool is ready for new tasks.
+        """
+        try:
+            self.pool.submit(task, *args)
+        except RuntimeError:
+            logger.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
+                           "error: Cause by stopping and restarting same trigger instance. Reinitializing "
+                           "threadpool...")
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            self.pool.submit(task, *args)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+    def __trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
+        """
+        Adds a new trigger and processes associated data.
+
+        This method increments the thread ID, updates the grid with the given score, creates a versioned directory
+        for the data, and starts data acquisition. It also measures speech statistics, emits the trigger, and saves
+        the data using a thread pool.
+
+        Parameters
+        ----------
+        sound : array_like
+            The sound data to be analyzed.
+        freq : float
+            The frequency associated with the trigger.
+        freq_bin : int
+            The frequency bin index in the grid.
+        dba_bin : int
+            The dB(A) bin index in the grid.
+        score : float
+            The score to be recorded in the grid.
+        trigger_data : dict
+            Additional data related to the trigger to be saved.
+
+        Notes
+        -----
+        - This method increments the internal ID counter for triggers.
+        - It updates the `grid` attribute at the specified `dba_bin` and `freq_bin` with the given `score`.
+        - A versioned directory is created within `rec_destination` to store the acquired data.
+        - The path to the versioned directory is written to a `.latest_trigger` file in the parent directory of
+          `rec_destination` to facilitate locating the latest trigger.
+        - Data acquisition is started using the `daq` attribute, saving data in the versioned directory.
+        - Speech statistics are measured using the `measure_praat_stats` function with frequency limits set by
+          `freq_bins_lb` and `freq_cutoff`.
+        - The `emit_trigger` method is called to handle the trigger event with the frequency bin, dB(A) bin, score,
+          and measured statistics.
+        - The `save_data` method is submitted to a thread pool for concurrent execution, passing all relevant
+          parameters and the newly incremented trigger ID.
+        """
+        self.id += 1
+        self.voice_field.update_grid(dba_bin, freq_bin, score)
+        data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}"))
+
+        # create a file named after newly added folder to parent dir of client recordings
+        # this allows to easily find the latest added trigger for referencing corresponding camera images
+        with open(os.path.join(os.path.split(self.rec_destination)[0], ".latest_trigger"), "w+") as f:
+            f.write(data_dir)
+
+        self.daq.start_acquisition(save_dir=data_dir)
+        praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
+        self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
+        self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin,
+                                      self.id)
+
+    def evaluate(self, sound: parselmouth.Sound, freq: float, dba: float, score: float,
+                      trigger_data: dict) -> bool:
+        """
+        Adds a trigger point to the recorder if certain conditions are met.
+
+        This method checks the provided frequency and dB(A) level against specified bounds. If they are within
+        bounds and the quality score meets the threshold, the trigger point is added to the grid and potentially
+        emitted to the server.
+
+        Parameters
+        ----------
+        sound : parselmouth.Sound
+            The sound object containing the audio data.
+        freq : float
+            The frequency of the trigger point.
+        dba : float
+            The dB(A) level of the trigger point.
+        score : float
+            The quality score of the trigger point.
+        trigger_data : dict
+            Dictionary containing data from the audio recorder instance, allowing additional information on the
+            trigger to be saved.
+
+        Returns
+        -------
+        bool
+            True if a new trigger point was added to the grid or an existing one was updated, False otherwise.
+
+        Notes
+        -----
+        - The method starts by checking if the frequency and dB(A) level are within acceptable bounds.
+        - If the score is below the minimum threshold (`self.min_score`), the method returns False.
+        - The frequency and dB(A) bins are determined using the lower bound arrays (`self.freq_bins_lb` and
+          `self.dba_bins_lb`).
+        - The method emits a voice event with the frequency bin, dB(A) bin, frequency, dB(A) level, and score.
+        - If no existing score is present in the grid at the determined bins, a new trigger is added.
+        - If an existing score is present, the new score must be sufficiently better than the existing score
+          (based on `self.retrigger_percentage_improvement`) to update the trigger.
+        - Logging is performed at various stages to provide runtime information and debugging details.
+
+        Examples
+        --------
+        >>> check_trigger(sound, 440.0, 70.0, 0.85, trigger_data)
+        True
+        """
+        start = time.time()
+        # if freq and/or dba are out of bounds
+        if freq > self.freq_cutoff or dba > self.dba_cutoff:
+            return False
+        if freq < self.freq_bins_lb[0] or dba < self.dba_bins_lb[0]:
+            return False
+
+        # find corresponding freq and db bins e.g. [1,3,5,7], 4 -> 2, therefor -1 to reference the correct lower bound
+        freq_bin = np.searchsorted(self.freq_bins_lb, freq) - 1
+        dba_bin = np.searchsorted(self.dba_bins_lb, dba) - 1
+
+        self.emit_voice(freq_bin, dba_bin, freq, dba, score)
+
+        if score < self.min_score:
+            return False
+
+        existing_score = self.voice_field.grid[dba_bin][freq_bin]
+        # add trigger if no previous entry exists
+        if existing_score is None:
+            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
+            logger.info(f"VOICE_FIELD entry added - score: {score}, "
+                        f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
+            return True
+        # check if new score is [retrigger_percentage_improvement] % better than of existing score
+        if existing_score < score and score / existing_score - 1 > self.retrigger_percentage_improvement:
+            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
+            logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
+                        f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
+            return True
+        logger.info(f"Voice update - freq: {freq}[{freq_bin}], dba: {dba}[{dba_bin}], score: {score}, "
+                    f"runtime: {time.time() - start:.6f} seconds")
+        return False
+
+    def save_data(self, save_dir: str, trigger_data: dict, praat_stats: dict, freq_bin: int, freq: float, dba_bin: int,
+                  id: int) -> None:
+        """
+        Save the data to the specified directory.
+
+        This method saves the provided trigger data, praat statistics, and metadata to files within the given
+        directory. It ensures thread-safe access using a lock and logs the process.
+
+        Parameters
+        ----------
+        save_dir : str
+            Path to the directory in which to store the data.
+        trigger_data : dict
+            Dictionary containing the data to save. Expected keys are "audio" and optionally "egg".
+        praat_stats : dict
+            Dictionary containing the praat statistics.
+        freq_bin : int
+            The frequency bin index.
+        freq : float
+            The exact frequency.
+        dba_bin : int
+            The dB(A) bin index.
+        id : int
+            The identifier for the current thread/task.
+
+        Notes
+        -----
+        - The method starts by logging the initiation of the data saving process and acquires a lock to ensure
+          thread-safe file operations.
+        - The `trigger_data["audio"]` and optionally `trigger_data["egg"]` arrays are saved as `.npy` files in the
+          specified directory.
+        - Metadata, including frequency bin, exact frequency, dB(A) bin, score, and praat statistics, is saved as
+          a JSON file.
+        - The audio data is also saved as a `.wav` file using the provided sampling rate.
+        - The method logs the runtime for saving the data and any errors encountered during the process.
+
+        Examples
+        --------
+        save_data("/path/to/save_dir", trigger_data, praat_stats, 3, 440.0, 2, 1)
+        """
+        start_total = time.time()
+        logger.info(f"Thread [{id}]: starting update")
+        logger.info(f"Thread [{id}]: acquiring lock")
+        with self._file_lock:
+            try:
+                start_save = time.time()
+                file_path = f"{save_dir}/audio.npy"
+                with open(file_path, "wb") as f:
+                    np.save(f, trigger_data["audio"])
+                if trigger_data["egg"] is not None:
+                    file_path = f"{save_dir}/egg.npy"
+                    with open(file_path, "wb") as f:
+                        np.save(f, trigger_data["egg"])
+                with open(f"{save_dir}/meta.json", "w") as f:
+                    json_object = json.dumps({
+                        "frequency_bin": int(freq_bin),
+                        "bin_frequency": self.freq_bins_lb[freq_bin],
+                        "exact_freq": freq,
+                        "dba_bin": int(dba_bin),
+                        "dba": self.dba_bins_lb[dba_bin],
+                        "score": self.grid[dba_bin][freq_bin],
+                        **praat_stats
+                    }, indent=4)
+                    f.write(json_object)
+                wav.write(f"{save_dir}/input_audio.wav", trigger_data["sampling_rate"], trigger_data["audio"])
+                logger.info(f"Thread [{id}]: data saved to {file_path}, runtime: {time.time() - start_save} seconds.")
+            except Exception as e:
+                logger.error(f"Thread [{id}]: error saving data: {e}")
+            finally:
+                logger.info(f"Thread [{id}]: releasing lock")
+        logger.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
+
+    def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:
+        """Emit a voice update to the server.
+
+        Parameters
+        ----------
+        freq : float
+            The frequency of the voice update.
+        dba : float
+            The db(A) level of the voice update.
+        score : float
+            The quality score of the voice update.
+        """
+        if self.socket is None:
+            return
+        self.socket.emit("voice", {
+            "freq_bin": int(freq_bin),
+            "dba_bin": int(dba_bin),
+            "freq": freq,
+            "dba": dba,
+            "score": score
+        })
+
+    def emit_trigger(self, freq_bin: int, dba_bin: int, score: float, praat_stats: dict) -> None:
+        """Emit a trigger to the server.
+
+        Parameters
+        ----------
+        freq_bin : int
+            The frequency bin of the trigger.
+        dba_bin : int
+            The db(A) bin of the trigger.
+        score : float
+            The quality score of the trigger.
+        praat_stats : dict
+            The praat statistics of the trigger.
+        """
+        if self.socket is None:
+            return
+        self.socket.emit("trigger", {
+            "freq_bin": int(freq_bin),
+            "dba_bin": int(dba_bin),
+            "score": float(score),
+            "stats": {**praat_stats}
+        })
+
+
+
 class VoiceField:
     """
     Represents a grid for storing and manipulating voice data.
