@@ -24,19 +24,19 @@ class VoiceField2:
                  db_bin_size: int = 5,
                  db_bounds: Tuple[int, int] = (35, 115)):
         # Creation of lower bounds for frequency and dba heatmap bins as well as cutoff (highest allowed value)
-        self.freq_bins_lb: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
-        self.freq_cutoff: float = round(np.power(2, semitone_bin_size / 12) * self.freq_bins_lb[-1], 3)
-        self.db_bins_lb: List[int] = self.__calc_dba_lower_bounds(db_bin_size, db_bounds)
-        self.db_cutoff: int = self.db_bins_lb[-1] + db_bin_size
-        # Creation of the grid
-        self.grid: List[List[Optional[float]]] = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
+        self.freq_bins_lower_bounds: List[float] = self.__calc_freq_lower_bounds(semitone_bin_size, freq_bounds)
+        self.freq_cutoff: float = round(np.power(2, semitone_bin_size / 12) * self.freq_bins_lower_bounds[-1], 3)
+        self.db_bins_lower_bounds: List[int] = self.__calc_dba_lower_bounds(db_bin_size, db_bounds)
+        self.db_cutoff: int = self.db_bins_lower_bounds[-1] + db_bin_size
+        # Creation of the field
+        self.field: List[List[Optional[float]]] = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
         logger.info(
             f"Created voice field with {self.num_freq_bins}[frequency bins] x {self.num_db_bins}[dba bins].")
 
     @property
     def freq_min(self) -> float:
         """The minimum frequency of the voice field."""
-        return self.freq_bins_lb[0]
+        return self.freq_bins_lower_bounds[0]
 
     @property
     def freq_max(self) -> float:
@@ -46,12 +46,12 @@ class VoiceField2:
     @property
     def num_freq_bins(self) -> int:
         """The number of frequency bins in the voice field."""
-        return len(self.freq_bins_lb)
+        return len(self.freq_bins_lower_bounds)
 
     @property
     def db_min(self) -> int:
         """The minimum db(A) level of the voice field."""
-        return self.db_bins_lb[0]
+        return self.db_bins_lower_bounds[0]
 
     @property
     def db_max(self) -> int:
@@ -61,7 +61,7 @@ class VoiceField2:
     @property
     def num_db_bins(self) -> int:
         """The number of frequency bins in the voice field."""
-        return len(self.freq_bins_lb)
+        return len(self.freq_bins_lower_bounds)
 
     @staticmethod
     def __check_bounds(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
@@ -83,7 +83,7 @@ class VoiceField2:
             return False
         return True
 
-    def __index_in_bounds(self, db_bin: int, freq_bin: int) -> bool:
+    def __check_indices_in_bounds(self, db_bin: int, freq_bin: int) -> bool:
         """
         Checks if the given dB(A) and frequency bin indices are within bounds.
 
@@ -110,11 +110,11 @@ class VoiceField2:
 
         Examples
         --------
-        For indexing a grid with shape (5,5)
-        >>> __index_in_bounds(2, 2)
+        For indexing a field with shape (5,5)
+        >>> __check_indices_in_bounds(2, 2)
         True
 
-        >>> __index_in_bounds(10, 5)
+        >>> __check_indices_in_bounds(10, 5)
         False
         """
         if not (self.db_min <= db_bin <= self.db_max and self.freq_min <= freq_bin <= self.freq_max):
@@ -172,8 +172,8 @@ class VoiceField2:
             lower_bounds.append(lower_bounds[-1] + db_bin_size)
         return lower_bounds
 
-    def reset_grid(self) -> str:
-        """Resets the grid to its initial state and creates a new recording directory. The new directory will use the
+    def reset_field(self) -> str:
+        """Resets the field to its initial state and creates a new recording directory. The new directory will use the
         name of the previous directory with an incremented number at the end.
         <prefix>_<date>_<time> -> <prefix>_<date>_<time>_<version> where version is the incremented number.
 
@@ -182,23 +182,23 @@ class VoiceField2:
         str
             The path to the newly created recording directory.
         """
-        self.grid = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
+        self.field = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
         # TODO: Needs to happen in Trigger
         """
-        logger.info(f"Voice field grid reset. New recording directory created: {self.rec_destination}")
+        logger.info(f"Voice field field reset. New recording directory created: {self.rec_destination}")
         return self.__create_versioned_dir(self.rec_destination)
         """
 
-    def get_score_at(self, db_bin: int, freq_bin: int) -> Optional[float]:
+    def get_field_score_at(self, db_bin: int, freq_bin: int) -> Optional[float]:
         """The score at the specified db(A) and frequency bin."""
-        if self.__index_in_bounds(db_bin, freq_bin):
-            return self.grid[db_bin][freq_bin]
+        if self.__check_indices_in_bounds(db_bin, freq_bin):
+            return self.field[db_bin][freq_bin]
         else:
-            raise LookupError(f"Index out of bounds for grid shape ({self.num_db_bins}, {self.num_freq_bins}): "
+            raise LookupError(f"Index out of bounds for field shape ({self.num_db_bins}, {self.num_freq_bins}): "
                               f"dba_bin: {db_bin}, freq_bin: {freq_bin}")
 
-    def update_grid_at(self, db_bin: int, freq_bin: int, score: float) -> None:
-        """Updates the grid with a new score.
+    def update_field_at(self, db_bin: int, freq_bin: int, score: float) -> None:
+        """Updates the field with a new score.
 
         Parameters
         ----------
@@ -207,12 +207,12 @@ class VoiceField2:
         freq_bin : int
             The frequency bin index.
         score : float
-            The quality score to update the grid with.
+            The quality score to update the field with.
         """
-        if self.__index_in_bounds(db_bin, freq_bin):
-            self.grid[db_bin][freq_bin] = score
+        if self.__check_indices_in_bounds(db_bin, freq_bin):
+            self.field[db_bin][freq_bin] = score
         else:
-            raise LookupError(f"Index out of bounds for grid shape ({self.num_db_bins}, {self.num_freq_bins}): "
+            raise LookupError(f"Index out of bounds for field shape ({self.num_db_bins}, {self.num_freq_bins}): "
                               f"dba_bin: {db_bin}, freq_bin: {freq_bin}")
 
 
@@ -310,7 +310,7 @@ class Trigger:
             self.pool.submit(task, *args)
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
-    def __trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
+    def __perform_trigger(self, sound, freq, freq_bin, dba_bin, score, trigger_data):
         """
         Adds a new trigger and processes associated data.
 
@@ -363,7 +363,7 @@ class Trigger:
         self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin,
                                       self.id)
 
-    def evaluate(self, sound: parselmouth.Sound, freq: float, dba: float, score: float,
+    def trigger(self, sound: parselmouth.Sound, freq: float, dba: float, score: float,
                       trigger_data: dict) -> bool:
         """
         Adds a trigger point to the recorder if certain conditions are met.
@@ -405,17 +405,18 @@ class Trigger:
 
         Examples
         --------
-        >>> check_trigger(sound, 440.0, 70.0, 0.85, trigger_data)
+        >>> trigger(sound, 440.0, 70.0, 0.85, trigger_data)
         True
         """
         start = time.time()
-        # if freq and/or dba are out of bounds
-        if freq > self.freq_cutoff or dba > self.dba_cutoff:
+        # check if freq and dba are within bounds
+        if freq > self.voice_field.freq_max or dba > self.voice_field.db_max:
             return False
-        if freq < self.freq_bins_lb[0] or dba < self.dba_bins_lb[0]:
+        if freq < self.voice_field.freq_min or dba < self.voice_field.db_min:
             return False
 
-        # find corresponding freq and db bins e.g. [1,3,5,7], 4 -> 2, therefor -1 to reference the correct lower bound
+        # find corresponding freq and db bins e.g. searchsorted([1,3,5,7], 4) = 2
+        # subtract 1 to get the correct index
         freq_bin = np.searchsorted(self.freq_bins_lb, freq) - 1
         dba_bin = np.searchsorted(self.dba_bins_lb, dba) - 1
 
