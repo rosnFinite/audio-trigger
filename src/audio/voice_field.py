@@ -349,7 +349,7 @@ class Trigger:
           parameters and the newly incremented trigger ID.
         """
         self.id += 1
-        self.voice_field.update_grid(dba_bin, freq_bin, score)
+        self.voice_field.update_field_at(dba_bin, freq_bin, score)
         data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{dba_bin}_{freq_bin}"))
 
         # create a file named after newly added folder to parent dir of client recordings
@@ -358,7 +358,7 @@ class Trigger:
             f.write(data_dir)
 
         self.daq.start_acquisition(save_dir=data_dir)
-        praat_stats = measure_praat_stats(sound, fmin=self.freq_bins_lb[0], fmax=self.freq_cutoff)
+        praat_stats = measure_praat_stats(sound, fmin=self.voice_field.freq_min, fmax=self.voice_field.freq_max)
         self.emit_trigger(freq_bin, dba_bin, score, praat_stats)
         self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, dba_bin,
                                       self.id)
@@ -417,24 +417,24 @@ class Trigger:
 
         # find corresponding freq and db bins e.g. searchsorted([1,3,5,7], 4) = 2
         # subtract 1 to get the correct index
-        freq_bin = np.searchsorted(self.freq_bins_lb, freq) - 1
-        dba_bin = np.searchsorted(self.dba_bins_lb, dba) - 1
+        freq_bin = np.searchsorted(self.voice_field.freq_bins_lower_bounds, freq) - 1
+        dba_bin = np.searchsorted(self.voice_field.db_bins_lower_bounds, dba) - 1
 
         self.emit_voice(freq_bin, dba_bin, freq, dba, score)
 
         if score < self.min_score:
             return False
 
-        existing_score = self.voice_field.grid[dba_bin][freq_bin]
+        existing_score = self.voice_field.get_field_score_at(dba_bin,freq_bin)
         # add trigger if no previous entry exists
         if existing_score is None:
-            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
+            self.__perform_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry added - score: {score}, "
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_percentage_improvement] % better than of existing score
         if existing_score < score and score / existing_score - 1 > self.retrigger_percentage_improvement:
-            self.__add_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
+            self.__perform_trigger(sound, freq, freq_bin, dba_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
@@ -498,11 +498,11 @@ class Trigger:
                 with open(f"{save_dir}/meta.json", "w") as f:
                     json_object = json.dumps({
                         "frequency_bin": int(freq_bin),
-                        "bin_frequency": self.freq_bins_lb[freq_bin],
+                        "bin_frequency": self.voice_field.freq_bins_lower_bounds[freq_bin],
                         "exact_freq": freq,
                         "dba_bin": int(dba_bin),
-                        "dba": self.dba_bins_lb[dba_bin],
-                        "score": self.grid[dba_bin][freq_bin],
+                        "dba": self.voice_field.db_bins_lower_bounds[dba_bin],
+                        "score": self.voice_field.get_field_score_at(dba_bin, freq_bin),
                         **praat_stats
                     }, indent=4)
                     f.write(json_object)
