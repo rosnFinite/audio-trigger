@@ -26,6 +26,8 @@ def get_dba_level(data: np.ndarray, rate: int, corr_dict: Optional[dict[str, flo
     float
         The calculated power output of the provided audio data (RMS value).
     """
+    if len(data) == 0:
+        raise ValueError("No data provided.")
     # temporarily disable A weighting (high computational cost)
     # weighted_signal = A_weight(data, fs=rate)
     rms_value = np.sqrt(np.mean(np.power(np.abs(data).astype(np.int32), 2)))

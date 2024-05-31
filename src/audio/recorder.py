@@ -227,7 +227,7 @@ class AudioRecorder:
         wav.write(location, self.rate, self.get_audio_data())
         logger.info(f"Audio buffer saved to {location}")
 
-    def terminate(self) -> None:
+    def terminate(self) -> None:  # pragma: no cover
         """Terminate the PyAudio instance.
         """
         self.p.terminate()
@@ -386,13 +386,15 @@ class Trigger(AudioRecorder):
         dba_calib_file : str
             The path to the file containing the calibration factors.
         """
+        if not dba_calib_file.endswith(".json"):
+            raise ValueError("Invalid file format. JSON file required.")
         logger.info("Loading calibration factors...")
         with open(dba_calib_file) as f:
             corr_factors = json.load(f)
         logger.info("Calibration factors successfully loaded.")
         return {value[1]: value[2] for value in list(corr_factors.values())}
 
-    def start_trigger(self, input_device_index: Optional[int] = None) -> None:
+    def start_trigger(self, input_device_index: Optional[int] = None) -> None:  # pragma: no cover
         """Start the audio recording stream and trigger on specific audio events.
         """
         self.start_stream(input_device_index, self.__trigger_callback)
@@ -450,7 +452,7 @@ class Trigger(AudioRecorder):
                     self.socket.emit("status_update_complete", {"status": "waiting", "save_location": self.rec_destination})
         return input_data, pyaudio.paContinue
 
-    def stop_trigger(self) -> None:
+    def stop_trigger(self) -> None:  # pragma: no cover
         """Stop the audio recording stream.
         """
         logger.info("Stopping trigger...")

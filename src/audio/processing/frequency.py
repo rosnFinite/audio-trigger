@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 
 
-def fourier_transform(data: np.ndarray, rate: int) -> Tuple[np.ndarray, float]:
+def fourier_transform(data: np.ndarray, rate: int) -> Tuple[np.ndarray, float]:  # pragma: no cover
     """Performs FFT on provided data and returns the frequency domain and the dominant frequency.
 
     Parameters

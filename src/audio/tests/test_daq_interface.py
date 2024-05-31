@@ -61,7 +61,7 @@ def test_init_with_invalid_args():
 
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
-def test_select_daq_no_device_connected(mock_local_system, daq_device, mock_config):
+def test_select_daq_without_device_connected(mock_local_system, mock_config):
     mock_local_system.return_value.devices = []
     with patch('src.audio.daq_interface.CONFIG', mock_config):
         daq_device = DAQ_Device(
@@ -71,7 +71,7 @@ def test_select_daq_no_device_connected(mock_local_system, daq_device, mock_conf
 
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
-def test_select_daq_with_one_device_connected(mock_local_system, mock_config):
+def test_select_daq_with_device_connected(mock_local_system, mock_config):
     mock_local_system.return_value.devices = ["Dev1"]
     with patch('src.audio.daq_interface.CONFIG', mock_config):
         daq_device = DAQ_Device(
@@ -82,7 +82,7 @@ def test_select_daq_with_one_device_connected(mock_local_system, mock_config):
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
 def test_select_daq_with_multiple_devices_connected(mock_local_system, mock_config):
-    mock_local_system.return_value.devices = ["Dev1", "Dev2"]
+    mock_local_system.return_value.devices = ["Dev1", "Dev2", "Dev3"]
     with patch('src.audio.daq_interface.CONFIG', mock_config):
         daq_device = DAQ_Device(
             from_config=True
@@ -91,40 +91,53 @@ def test_select_daq_with_multiple_devices_connected(mock_local_system, mock_conf
 
 
 @patch('src.audio.daq_interface.nidaqmx.system.System.local')
-def test_select_daq_with_id_with_multiple_devices_connected(mock_local_system, mock_config):
-    mock_local_system.return_value.devices = ["Dev1", "Dev2"]
+def test_select_daq_with_multiple_devices_connected_and_manual_selection(mock_local_system, mock_config):
+    mock_local_system.return_value.devices = ["Dev1", "Dev2", "Dev3"]
     with patch('src.audio.daq_interface.CONFIG', mock_config):
         daq_device = DAQ_Device(
-            device_id="Dev1",
-            from_config=True
-        )
-    assert daq_device.device == "Dev1"
-    with patch('src.audio.daq_interface.CONFIG', mock_config):
-        daq_device = DAQ_Device(
-            device_id="Dev2",
-            from_config=True
+            from_config=True,
+            device_id="Dev2"
         )
     assert daq_device.device == "Dev2"
 
 
-def test_start_acquisition_with_no_device_connected(daq_device):
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_select_daq_raise_value_error_on_invalid_selection(mock_local_system, mock_config):
+    mock_local_system.return_value.devices = ["Dev1", "Dev2", "Dev3"]
+    with pytest.raises(ValueError, match="'Dev7' is not in list"):
+        with patch('src.audio.daq_interface.CONFIG', mock_config):
+            DAQ_Device(
+                from_config=True,
+                device_id="Dev7"
+            )
+
+
+def test_start_acquisition_without_connected_device(daq_device):
+    daq_device.device = None
     with pytest.raises(AttributeError, match='No DAQ device connected. Cannot start acquisition.'):
         daq_device.start_acquisition('/fake/path')
 
 
-
+# TODO: Test case for acquisition method (hard because nidaqmx.system.System.local().devices is not a list of strings)
 """
-@patch('src.audi.daq_interface.nidaqmx.Task')
-@patch('src.audi.daq_interface.os.path.join')
-@patch('src.audi.daq_interface.np.savetxt')
-def test_start_acquisition(mock_savetxt, mock_path_join, mock_nidaqmx_task, daq_device):
+@patch('src.audio.daq_interface.nidaqmx.Task')
+@patch('src.audio.daq_interface.os.path.join')
+@patch('src.audio.daq_interface.np.savetxt')
+@patch('src.audio.daq_interface.nidaqmx.system.System.local')
+def test_start_acquisition_with_device_connected(mock_local_system, mock_savetxt, mock_path_join, mock_nidaqmx_task, mock_config):
     mock_task_in = MagicMock()
     mock_task_trig = MagicMock()
     mock_nidaqmx_task.side_effect = [mock_task_in, mock_task_trig]
 
     mock_path_join.return_value = '/fake/path/measurements.csv'
-    mock_data = np.array([1, 2, 3, 4, 5])
+    mock_data = np.array([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]])
     mock_task_in.read.return_value = mock_data
+
+    mock_local_system.return_value.devices = [{"name": "Dev1"}]
+    with patch('src.audio.daq_interface.CONFIG', mock_config):
+        daq_device = DAQ_Device(
+            from_config=True
+        )
 
     daq_device.start_acquisition('/fake/path')
 

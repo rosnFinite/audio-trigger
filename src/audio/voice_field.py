@@ -72,6 +72,9 @@ class VoiceField:
         """Creates a new directory with an incremented version number if the directory already exists.
         If the directory does not exist, the path is returned as is.
 
+        The incrementation starts with version number 1.
+        path -> path_1 -> path_2 -> ...
+
         Parameters
         ----------
         path : str

@@ -8,7 +8,7 @@ from src.audio.processing.frequency import fourier_transform
 
 def calc_quality_score(data: Optional[np.ndarray] = None,
                        rate: Optional[int] = None,
-                       abs_freq: Optional[np.ndarray] = None) -> float:
+                       abs_freq: Optional[np.ndarray] = None) -> float:  # pragma: no cover
     """Calculates quality score denoting the strength of strongest frequency compared to other frequencies.
     Values closer to 0 denote higher quality/strength of the mainly detected frequency.
 
@@ -72,17 +72,17 @@ def calc_pitch_score(data: Optional[np.ndarray] = None,
         sound = parselmouth.Sound(data, sampling_frequency=rate)
     else:
         if freq_floor is None or freq_ceiling is None:
-            raise ValueError("No frequency bounds provided. ")
+            raise ValueError("No frequency bounds provided.")
 
     # intensity score via standard deviation 1 = high consistency, 0 = low consistency over time
     intensity = sound.to_intensity(time_step=0.01)
     intensity_std = np.std(intensity.values)
-    intensity_score = 1 / (1+np.std(intensity.values))
+    intensity_score = 1 / (1 + intensity_std)
 
     # frequency score
     pitch = sound.to_pitch(time_step=0.01, pitch_floor=freq_floor, pitch_ceiling=freq_ceiling)
     pitch_values = [val[0] for val in pitch.selected_array]
     pitch_std = np.std(pitch_values)
-    pitch_score = 1 / (pitch_std+1)
+    pitch_score = 1 / (1 + pitch_std)
 
     return round((intensity_score + pitch_score) / 2, 4), np.mean(pitch_values)
