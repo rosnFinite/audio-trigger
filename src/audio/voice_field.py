@@ -18,6 +18,65 @@ logger.setLevel(logging.DEBUG)
 
 
 class VoiceField2:
+    """
+    A class to represent and manage a voice field.
+
+    This class provides methods to initialize the voice field, calculate frequency and dB(A) bin lower bounds,
+    check indices, and update the field with new scores.
+
+    Parameters
+    ----------
+    semitone_bin_size : int, optional
+        The size of each semitone bin, by default 2.
+    freq_bounds : Tuple[float, float], optional
+        The lower and upper bounds of the frequency range, by default (55, 1600).
+    db_bin_size : int, optional
+        The size of each dB(A) bin, by default 5.
+    db_bounds : Tuple[int, int], optional
+        The lower and upper bounds of the dB(A) range, by default (35, 115).
+
+    Attributes
+    ----------
+    freq_bins_lower_bounds : List[float]
+        Lower bounds for the frequency bins.
+    freq_cutoff : float
+        The highest allowed frequency value.
+    db_bins_lower_bounds : List[int]
+        Lower bounds for the dB(A) bins.
+    db_cutoff : int
+        The highest allowed dB(A) value.
+    field : List[List[Optional[float]]]
+        The voice field matrix initialized with None values.
+
+    Methods
+    -------
+    freq_min():
+        Returns the minimum frequency of the voice field.
+    freq_max():
+        Returns the maximum frequency of the voice field.
+    num_freq_bins():
+        Returns the number of frequency bins in the voice field.
+    db_min():
+        Returns the minimum dB(A) level of the voice field.
+    db_max():
+        Returns the maximum dB(A) level of the voice field.
+    num_db_bins():
+        Returns the number of dB(A) bins in the voice field.
+    __check_bounds(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
+        Checks if the provided bounds are valid.
+    __check_indices_in_bounds(db_bin: int, freq_bin: int) -> bool:
+        Checks if the given dB(A) and frequency bin indices are within bounds.
+    __calc_freq_lower_bounds(semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
+        Calculates the lower bounds of the frequency bins.
+    __calc_dba_lower_bounds(db_bin_size: int, db_bounds: Tuple[int, int]) -> List[int]:
+        Calculates the lower bounds of the dB(A) bins.
+    reset_field() -> None:
+        Resets the field to its initial state by setting all values back to None.
+    get_field_score_at(db_bin: int, freq_bin: int) -> Optional[float]:
+        Retrieves the score at the specified dB(A) and frequency bin.
+    update_field_at(db_bin: int, freq_bin: int, score: float) -> None:
+        Updates the field with a new score at the specified dB(A) and frequency bin.
+    """
     def __init__(self,
                  semitone_bin_size: int = 2,
                  freq_bounds: Tuple[float, float] = (55, 1600),
@@ -35,47 +94,120 @@ class VoiceField2:
 
     @property
     def freq_min(self) -> float:
-        """The minimum frequency of the voice field."""
+        """
+        The minimum frequency of the voice field.
+
+        This property returns the minimum frequency value allowed in the voice field, as defined by the first element of
+        the `freq_bins_lower_bounds` list.
+
+        Returns
+        -------
+        float
+            The minimum frequency of the voice field.
+        """
         return self.freq_bins_lower_bounds[0]
 
     @property
     def freq_max(self) -> float:
-        """The maximum frequency of the voice field."""
+        """
+        The maximum frequency of the voice field.
+
+        This property returns the maximum frequency value allowed in the voice field, as defined by the `freq_cutoff`.
+
+        Returns
+        -------
+        float
+            The maximum frequency of the voice field.
+        """
         return self.freq_cutoff
 
     @property
     def num_freq_bins(self) -> int:
-        """The number of frequency bins in the voice field."""
+        """
+        The number of frequency bins in the voice field.
+
+        This property returns the total number of frequency bins defined in the voice field, based on the length of the
+        `freq_bins_lower_bounds` list.
+
+        Returns
+        -------
+        int
+            The number of frequency bins in the voice field.
+        """
         return len(self.freq_bins_lower_bounds)
 
     @property
     def db_min(self) -> int:
-        """The minimum db(A) level of the voice field."""
+        """
+        The minimum db(A) level of the voice field.
+
+        This property returns the minimum dB(A) level allowed in the voice field, as defined by the first element of
+        the `db_bins_lower_bounds` list.
+
+        Returns
+        -------
+        int
+            The minimum dB(A) level of the voice field.
+        """
         return self.db_bins_lower_bounds[0]
 
     @property
     def db_max(self) -> int:
-        """The maximum db(A) level of the voice field."""
+        """
+        The maximum db(A) level of the voice field.
+
+        This property returns the maximum dB(A) level allowed in the voice field, as defined by the `db_cutoff`.
+
+        Returns
+        -------
+        int
+            The maximum dB(A) level of the voice field.
+        """
         return self.db_cutoff
 
     @property
     def num_db_bins(self) -> int:
-        """The number of frequency bins in the voice field."""
+        """
+        The number of frequency bins in the voice field.
+
+        This property returns the total number of dB(A) bins defined in the voice field, based on the length of the
+        `db_bins_lower_bounds` list.
+
+        Returns
+        -------
+        int
+            The number of dB(A) bins in the voice field.
+        """
         return len(self.freq_bins_lower_bounds)
 
     @staticmethod
     def __check_bounds(bounds: Union[Tuple[float, float], Tuple[int, int]]) -> bool:
-        """Check if the provided bounds are valid.
+        """
+        Checks if the provided bounds are valid.
+
+        This method verifies that the provided bounds are a tuple of two elements and that the elements are not equal.
+        The first element must be less than the second element (lower bound, upper bound).
 
         Parameters
         ----------
         bounds : Union[Tuple[float, float], Tuple[int, int]]
-            The bounds to check.
+            The bounds to check. It can be a tuple of two floats or two integers.
 
         Returns
         -------
         bool
             True if the bounds are valid, False otherwise.
+
+        Examples
+        --------
+        >>> __check_bounds((1.0, 2.0))
+        True
+
+        >>> __check_bounds((3, 3))
+        False
+
+        >>> __check_bounds((5,2))
+        False
         """
         if len(bounds) != 2:
             return False
@@ -111,6 +243,7 @@ class VoiceField2:
         Examples
         --------
         For indexing a field with shape (5,5)
+
         >>> __check_indices_in_bounds(2, 2)
         True
 
@@ -122,7 +255,11 @@ class VoiceField2:
         return True
 
     def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
-        """Calculate the lower bounds of the frequency bins.
+        """
+        Calculates the lower bounds of the frequency bins.
+
+        This method calculates the lower bounds for frequency bins based on the provided semitone bin size and
+        frequency range.
 
         Parameters
         ----------
@@ -135,6 +272,16 @@ class VoiceField2:
         -------
         List[float]
             The lower bounds of the frequency bins.
+
+        Raises
+        ------
+        ValueError
+            If the provided frequency bounds are not valid.
+
+        Examples
+        --------
+        >>> __calc_freq_lower_bounds(1, (20.0, 20000.0))
+        [20.0, 21.0, 22.3, 23.6, ..., 19999.0]
         """
         if not self.__check_bounds(freq_bounds):
             logger.critical(f"Provided frequency bounds are not valid. Tuple of two different values required. "
@@ -149,7 +296,11 @@ class VoiceField2:
         return lower_bounds
 
     def __calc_dba_lower_bounds(self, db_bin_size: int, db_bounds: Tuple[int, int]) -> List[int]:
-        """Calculate the lower bounds of the db(A) bins.
+        """
+        Calculates the lower bounds of the db(A) bins.
+
+        This method calculates the lower bounds for db(A) bins based on the provided db(A) bin size and
+        db(A) range.
 
         Parameters
         ----------
@@ -162,6 +313,16 @@ class VoiceField2:
         -------
         List[int]
             The lower bounds of the db(A) bins.
+
+        Raises
+        ------
+        ValueError
+            If the provided db(A) bounds are not valid.
+
+        Examples
+        --------
+        >>> __calc_db_lower_bounds(5, (20, 100))
+        [20, 25, 30, 35, ..., 100]
         """
         if not self.__check_bounds(db_bounds):
             logger.critical(f"Provided db(A) bounds are not valid. Tuple of two different values required. "
@@ -172,25 +333,46 @@ class VoiceField2:
             lower_bounds.append(lower_bounds[-1] + db_bin_size)
         return lower_bounds
 
-    def reset_field(self) -> str:
-        """Resets the field to its initial state and creates a new recording directory. The new directory will use the
-        name of the previous directory with an incremented number at the end.
-        <prefix>_<date>_<time> -> <prefix>_<date>_<time>_<version> where version is the incremented number.
+    def reset_field(self) -> None:
+        """
+        Resets the field to its initial state by setting all values to back to None and keeping the shape.
+        """
+        self.field = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
+
+    def get_field_score_at(self, db_bin: int, freq_bin: int) -> Optional[float]:
+        """
+        Retrieves the score for the specified dB(A) and frequency bin.
+
+        This method returns the score from the field at the given dB(A) and frequency bin indices if they are within
+        bounds. If the indices are out of bounds, a LookupError is raised.
+
+        Parameters
+        ----------
+        db_bin : int
+            The dB(A) bin index to check.
+        freq_bin : int
+            The frequency bin index to check.
 
         Returns
         -------
-        str
-            The path to the newly created recording directory.
-        """
-        self.field = [[None] * self.num_freq_bins for _ in range(self.num_db_bins)]
-        # TODO: Needs to happen in Trigger
-        """
-        logger.info(f"Voice field field reset. New recording directory created: {self.rec_destination}")
-        return self.__create_versioned_dir(self.rec_destination)
-        """
+        Optional[float]
+            The score at the specified dB(A) and frequency bin, or None if there is no score.
 
-    def get_field_score_at(self, db_bin: int, freq_bin: int) -> Optional[float]:
-        """The score at the specified db(A) and frequency bin."""
+        Raises
+        ------
+        LookupError
+            If the provided dB(A) or frequency bin indices are out of bounds.
+
+        Examples
+        --------
+        >>> get_field_score_at(2, 3)
+        0.85
+
+        >>> get_field_score_at(10, 5)
+        Traceback (most recent call last):
+            ...
+        LookupError: Index out of bounds for field shape (num_db_bins, num_freq_bins): dba_bin: 10, freq_bin: 5
+        """
         if self.__check_indices_in_bounds(db_bin, freq_bin):
             return self.field[db_bin][freq_bin]
         else:
@@ -198,14 +380,18 @@ class VoiceField2:
                               f"dba_bin: {db_bin}, freq_bin: {freq_bin}")
 
     def update_field_at(self, db_bin: int, freq_bin: int, score: float) -> None:
-        """Updates the field with a new score.
+        """
+        Updates the field with a new score at the specified dB(A) and frequency bin.
+
+        This method updates the score in the field at the given dB(A) and frequency bin indices if they are within
+        bounds. If the indices are out of bounds, a LookupError is raised.
 
         Parameters
         ----------
         db_bin : int
-            The db(A) bin index.
+            The dB(A) bin index to update.
         freq_bin : int
-            The frequency bin index.
+            The frequency bin index to update.
         score : float
             The quality score to update the field with.
         """
@@ -513,6 +699,11 @@ class Trigger:
             finally:
                 logger.info(f"Thread [{id}]: releasing lock")
         logger.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
+
+    def reset_field(self) -> None:
+        """Resets the voice field and creates a new recording directory."""
+        self.voice_field.reset_field()
+        self.__create_versioned_dir(self.rec_destination)
 
     def emit_voice(self, freq_bin: int, dba_bin: int, freq: float, dba: float, score: float) -> None:
         """Emit a voice update to the server.
