@@ -216,45 +216,6 @@ class VoiceField2:
             return False
         return True
 
-    def __check_indices_in_bounds(self, db_bin: int, freq_bin: int) -> bool:
-        """
-        Checks if the given dB(A) and frequency bin indices are within bounds.
-
-        This method verifies whether the provided dB(A) bin and frequency bin indices are within the acceptable
-        range defined by the instance attributes. If either index is out of bounds, False is returned.
-
-        Parameters
-        ----------
-        db_bin : int
-            The dB(A) bin index to check.
-        freq_bin : int
-            The frequency bin index to check.
-
-        Returns
-        -------
-        bool
-            True if both indices are within bounds. False otherwise.
-
-
-        Notes
-        -----
-        - The method checks that `db_bin` is between `self.db_min` and `self.db_max` (inclusive).
-        - It also checks that `freq_bin` is between `self.freq_min` and `self.freq_max` (inclusive).
-
-        Examples
-        --------
-        For indexing a field with shape (5,5)
-
-        >>> __check_indices_in_bounds(2, 2)
-        True
-
-        >>> __check_indices_in_bounds(10, 5)
-        False
-        """
-        if not (self.db_min <= db_bin <= self.db_max and self.freq_min <= freq_bin <= self.freq_max):
-            return False
-        return True
-
     def __calc_freq_lower_bounds(self, semitone_bin_size: int, freq_bounds: Tuple[float, float]) -> List[float]:
         """
         Calculates the lower bounds of the frequency bins.
@@ -374,7 +335,7 @@ class VoiceField2:
             ...
         LookupError: Index out of bounds for field shape (num_db_bins, num_freq_bins): db_bin: 10, freq_bin: 5
         """
-        if self.__check_indices_in_bounds(db_bin, freq_bin):
+        if 0 <= db_bin < self.num_db_bins and 0 <= freq_bin < self.num_freq_bins:
             return self.field[db_bin][freq_bin]
         else:
             raise LookupError(f"Index out of bounds for field shape ({self.num_db_bins}, {self.num_freq_bins}): "
@@ -410,11 +371,70 @@ class VoiceField2:
             ...
         LookupError: Index out of bounds for field shape (num_db_bins, num_freq_bins): db_bin: 10, freq_bin: 5
         """
-        if self.__check_indices_in_bounds(db_bin, freq_bin):
+        if 0 <= db_bin < self.num_db_bins and 0 <= freq_bin < self.num_freq_bins:
             self.field[db_bin][freq_bin] = score
         else:
             raise LookupError(f"Index out of bounds for field shape ({self.num_db_bins}, {self.num_freq_bins}): "
                               f"db_bin: {db_bin}, freq_bin: {freq_bin}")
+
+    def get_bin_indices(self, db: float, freq: float) -> Tuple[int, int]:
+        """
+        Calculates the indices of the frequency and dB(A) bins for the given frequency and dB(A) values.
+
+        This method calculates the indices of the frequency and dB(A) bins in the voice field for the given frequency
+        and dB(A) values. The indices are calculated based on the lower bounds of the bins and the provided values.
+
+        Parameters
+        ----------
+        db : float
+            The dB(A) value for which to find the bin index.
+        freq : float
+            The frequency value for which to find the bin index.
+
+        Returns
+        -------
+        Tuple[int, int]
+            The frequency bin index and dB(A) bin index for the given frequency and dB(A) values.
+
+        Examples
+        --------
+        >>> get_bin_indices(50, 1000)
+        (3, 16)
+        """
+        freq_bin = np.searchsorted(self.freq_bins_lower_bounds, freq, side="right") - 1
+        db_bin = np.searchsorted(self.db_bins_lower_bounds, db, side="right") - 1
+        return db_bin, freq_bin
+
+    def is_in_bounds(self, db: float, freq: float):
+        """
+        Checks if the given frequency and dB(A) values are within the bounds of the voice field.
+
+        This method checks if the given frequency and dB(A) values are within the bounds of the voice field. The values
+        are within bounds if they are greater than or equal to the minimum values and less than the maximum values.
+
+        Parameters
+        ----------
+        db : float
+            The dB(A) value to check.
+        freq : float
+            The frequency value to check.
+
+        Returns
+        -------
+        bool
+            True if the values are within bounds, False otherwise.
+
+        Examples
+        --------
+        >>> is_in_bounds(50, 1000)
+        True
+
+        >>> is_in_bounds(20, 20000)
+        False
+        """
+        if self.db_min <= db <= self.db_max and self.freq_min <= freq <= self.freq_max:
+            return True
+        return False
 
 
 class Trigger:
@@ -494,7 +514,7 @@ class Trigger:
         # attributes for the thread pool
         self._file_lock = threading.Lock()
         self.id = 0
-        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     @staticmethod
     def __create_versioned_dir(path: str) -> str:
@@ -557,14 +577,14 @@ class Trigger:
           ensuring the thread pool is ready for new tasks.
         """
         try:
-            self._pool.submit(task, *args)
+            self.pool.submit(task, *args)
         except RuntimeError:
             logger.warning("RuntimeError: ThreadPoolExecutor already shutdown occurred. This is not a critical "
                            "error: Cause by stopping and restarting same trigger instance. Reinitializing "
                            "threadpool...")
-            self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
-            self._pool.submit(task, *args)
-        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+            self.pool.submit(task, *args)
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def __perform_trigger(self, sound: parselmouth.Sound, freq, freq_bin: int, db_bin: int, score: float,
                           trigger_data: dict) -> None:
@@ -614,7 +634,10 @@ class Trigger:
         with open(os.path.join(os.path.split(self.rec_destination)[0], ".latest_trigger"), "w+") as f:
             f.write(data_dir)
 
-        self.daq.start_acquisition(save_dir=data_dir)
+        try:
+            self.daq.start_acquisition(save_dir=data_dir)
+        except AttributeError:
+            logger.critical("DAQ device not connected. Cannot start acquisition.")
         praat_stats = measure_praat_stats(sound, fmin=self.voice_field.freq_min, fmax=self.voice_field.freq_max)
         self.emit_trigger(freq_bin, db_bin, score, praat_stats)
         self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, db_bin,
@@ -667,15 +690,10 @@ class Trigger:
         """
         start = time.time()
         # check if freq and db are within bounds
-        if freq > self.voice_field.freq_max or db > self.voice_field.db_max:
-            return False
-        if freq < self.voice_field.freq_min or db < self.voice_field.db_min:
+        if not self.voice_field.is_in_bounds(db, freq):
             return False
 
-        # find corresponding freq and db bins e.g. searchsorted([1,3,5,7], 4) = 2
-        # subtract 1 to get the correct index
-        freq_bin = np.searchsorted(self.voice_field.freq_bins_lower_bounds, freq) - 1
-        db_bin = np.searchsorted(self.voice_field.db_bins_lower_bounds, db) - 1
+        db_bin, freq_bin = self.voice_field.get_bin_indices(db, freq)
 
         self.emit_voice(freq_bin, db_bin, freq, db, score)
 
