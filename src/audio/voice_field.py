@@ -789,10 +789,11 @@ class Trigger:
                 logger.info(f"Thread [{id}]: releasing lock")
         logger.info(f"Thread [{id}]: finished update, runtime: {time.time() - start_total:.4f} seconds.")
 
-    def reset_field(self) -> None:
+    def reset_field(self) -> str:
         """Resets the voice field and creates a new recording directory."""
         self.voice_field.reset_field()
-        self.__create_versioned_dir(self.rec_destination)
+        self.rec_destination = self.__create_versioned_dir(self.rec_destination)
+        return self.rec_destination
 
     def emit_voice(self, freq_bin: int, db_bin: int, freq: float, db: float, score: float) -> None:
         """

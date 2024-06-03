@@ -107,9 +107,9 @@ def on_status_update(action: dict) -> None:
             client.emit("status_update_complete", {"status": "ready", "save_location": this.trigger_recorder.rec_destination})
     if action["trigger"] == "reset":
         if not this.trigger_recorder.stream_thread_is_running:
-            new_rec_destination = this.trigger_recorder.voice_field.reset_field()
+            this.trigger_recorder.rec_destination = this.trigger_recorder.trigger.reset_field()
             logger.info("AudioTriggerRecorder reset.")
-            client.emit("status_update_complete", {"status": "reset", "save_location": new_rec_destination})
+            client.emit("status_update_complete", {"status": "reset", "save_location": this.trigger_recorder.rec_destination})
 
 
 @client.on("remove_recording_request")
