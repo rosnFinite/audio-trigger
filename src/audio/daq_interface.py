@@ -24,10 +24,10 @@ class DAQ_Device:
                  from_config: bool = False):
         self.device = self.__select_daq(device_id)
         if from_config:
-            self.analog_input_channels = CONFIG["analog_input_channels"]
-            self.digital_trig_channel = CONFIG["digital_trigger_channel"]
-            self.sample_rate = CONFIG["sample_rate"]
-            self.num_samples = CONFIG["number_of_samples"]
+            self.analog_input_channels = CONFIG["voice_field"]["analog_input_channels"]
+            self.digital_trig_channel = CONFIG["voice_field"]["digital_trigger_channel"]
+            self.sample_rate = CONFIG["voice_field"]["sample_rate"]
+            self.num_samples = CONFIG["voice_field"]["number_of_samples"]
         else:
             if analog_input_channels is None or digital_trig_channel is None:
                 raise ValueError("analog_input_channels and digital_trig_channel need to be provided.")
