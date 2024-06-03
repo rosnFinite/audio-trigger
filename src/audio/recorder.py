@@ -12,9 +12,9 @@ import scipy.io.wavfile as wav
 import collections
 import socketio
 
-from .voice_field import VoiceField
-from .processing.db import get_dba_level
-from .processing.scoring import calc_pitch_score
+from src.audio.voice_field import VoiceField, Trigger
+from src.audio.processing.db import get_dba_level
+from src.audio.processing.scoring import calc_pitch_score
 from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
@@ -335,14 +335,13 @@ class AudioTriggerRecorder(AudioRecorder):
                     logger.critical("Websocket connection to default server failed.")
 
         self.voice_field = VoiceField(
-            rec_destination=self.rec_destination,
             semitone_bin_size=semitone_bin_size,
             freq_bounds=freq_bounds,
-            dba_bounds=dba_bounds,
-            min_score=self.min_score,
-            retrigger_percentage_improvement=retrigger_percentage_improvement,
-            socket=self.socket
+            db_bin_size=dba_bin_size,
+            db_bounds=dba_bounds,
         )
+        self.trigger = Trigger(self.voice_field, self.rec_destination, self.min_score,
+                               retrigger_percentage_improvement, socket)
         self.init_settings = {
             "sampling_rate": self.rate,
             "save_location": self.rec_destination,
@@ -438,11 +437,11 @@ class AudioTriggerRecorder(AudioRecorder):
             egg = self.get_egg_data()
             sound = parselmouth.Sound(audio, sampling_frequency=self.rate)
             score, dom_freq = calc_pitch_score(sound=sound,
-                                               freq_floor=self.voice_field.freq_bins_lb[0],
+                                               freq_floor=self.voice_field.freq_min,
                                                freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(audio, self.rate, corr_dict=self.calib_factors)
-            is_trig = self.voice_field.check_trigger(sound, dom_freq, dba_level, score,
-                                                     trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
+            is_trig = self.trigger.trigger(sound, dom_freq, dba_level, score,
+                                            trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
             if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))
@@ -457,10 +456,10 @@ class AudioTriggerRecorder(AudioRecorder):
         """
         logger.info("Stopping trigger...")
         super().stop_stream()
-        self.voice_field.pool.shutdown(wait=True)
+        self.trigger.pool.shutdown(wait=True)
         logger.info("AudioTriggerRecorder stopped successfully.")
 
 
 if __name__ == "__main__":
-    trigger = AudioTriggerRecorder(channels=1, buffer_size=0.2, dba_calib_file="../../calibration/Behringer.json", min_q_score=100)
+    trigger = AudioTriggerRecorder(channels=1, buffer_size=0.2, min_score=0.5)
     trigger.start_trigger(1)
