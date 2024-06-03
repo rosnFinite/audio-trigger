@@ -28,7 +28,7 @@ server = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 # variable for the trigger client sid
 this = sys.modules[__name__]
 # list of connected clients (maximal 2 clients, one web client and one audio trigger client
-# each client is represented by a dictionary (key = session ID, value = client type("web" or "audio"))
+# each client is represented by a dictionary (key = session ID, value = client type("web", "web_patient", "audio"))
 this.connected_clients = []
 
 #TODO: update paths to use path defined in config file
