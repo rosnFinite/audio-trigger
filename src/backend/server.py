@@ -165,9 +165,9 @@ def on_register_client(data: dict) -> None:
         The data received from the client. Dictionary containing the client's type "type" and session ID "sid".
     """
     logger.info(f"Received register event from sid: {request.sid} with data: {data}")
-    # check if another client with same type is already connected
+    # check if another client with same type is already connected, except for "web_patient" type
     for client in this.connected_clients:
-        if client["type"] == data["type"]:
+        if client["type"] == data["type"] and client["type"] != "web_patient":
             # disconnect emitting if that is the case
             disconnect(request.sid)
             logger.debug(f"Client with same type: {data['type']} already exists, disconnecting...")
