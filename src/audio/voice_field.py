@@ -546,10 +546,15 @@ class Trigger:
             The path to the newly created directory.
         """
         original_path = path
-        version = 0
         while os.path.exists(path):
-            version += 1
-            path = os.path.join(os.path.dirname(original_path), f"{os.path.basename(original_path)}_{version}")
+            head, tail = os.path.split(original_path)
+            splitted_tail = tail.split("_")
+            # TODO: find a better way to handle timestamped directories, currently only 2 digit (up to 99) version numbers are supported
+            if len(splitted_tail) > 1 and len(splitted_tail[-1]) < 3:
+                old_version = int(splitted_tail[-1])
+                path = os.path.join(head, "_".join(splitted_tail[:-1]) + f"_{old_version + 1}")
+            else:
+                path = os.path.join(head, f"{tail}_1")
         logger.info(f"Creating new directory: {path}")
         os.makedirs(path)
         return path
@@ -636,7 +641,7 @@ class Trigger:
 
         try:
             self.daq.start_acquisition(save_dir=data_dir)
-        except AttributeError:
+        except AttributeError as e:
             logger.critical("DAQ device not connected. Cannot start acquisition.")
         praat_stats = measure_praat_stats(sound, fmin=self.voice_field.freq_min, fmax=self.voice_field.freq_max)
         self.emit_trigger(freq_bin, db_bin, score, praat_stats)
