@@ -55,6 +55,9 @@ def freezeargs(func):
 
     return wrapped
 
+def sanitize_dict(stats: dict):
+    """Sanitize the dictionary by removing any NaN values and replacing them with None"""
+    return {k: None if isinstance(v, float) and v != v else v for k, v in stats.items()}
 
 def measure_praat_stats(sound: parselmouth.Sound, fmin: float, fmax: float):
     duration = parselmouth.praat.call(sound, "Get total duration")  # duration
@@ -80,7 +83,7 @@ def measure_praat_stats(sound: parselmouth.Sound, fmin: float, fmax: float):
     apq11Shimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (apq11)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
     ddaShimmer = parselmouth.praat.call([sound, pointProcess], "Get shimmer (dda)", 0, 0, 0.0001, 0.02, 1.3, 1.6)
 
-    return {
+    praat_dict = {
         "duration": duration,
         "meanF": meanF,
         "stdevF": stdevF,
@@ -97,3 +100,5 @@ def measure_praat_stats(sound: parselmouth.Sound, fmin: float, fmax: float):
         "apq11Shimmer": apq11Shimmer,
         "ddaShimmer": ddaShimmer
     }
+
+    return sanitize_dict(praat_dict)
