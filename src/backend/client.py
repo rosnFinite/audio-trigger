@@ -9,6 +9,7 @@ from typing import List, Dict
 
 from src.audio.recorder import AudioTriggerRecorder
 from src.config_utils import CONFIG
+from src.exception_manager import emit_exception
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -77,9 +78,19 @@ def on_settings_change(settings: dict) -> None:
     else:
         this.trigger_recorder.recording_device = settings["device"]
     settings["status"] = "ready"
-    settings["status"] = "ready"
-    logger.debug("Emitting changed settings to server...")
-    client.emit("settings_update_complete", settings)
+
+    logger.debug("Verifying number of channels for selected audio device...")
+    # try opening audio stream to verify number channels are supported
+    if this.trigger_recorder.try_open_stream(input_device_index=this.trigger_recorder.recording_device):
+        logger.debug("Audio device supports the required number of channels.")
+        logger.debug("Emitting changed settings to server...")
+        client.emit("settings_update_complete", settings)
+    else:
+        this.trigger_recorder = None
+        logger.error("Audio device does not support the required number of channels.")
+        emit_exception(client, exception_level="critical", exception_title="Prozess konnte nicht gestartet werden!",
+                       exception_description="Aufnahmegerät unterstützt NICHT die eingestellte "
+                                             "Anzahl an Kanälen. Gerät oder Kanalanzahl anpassen.")
 
 
 @client.on("status_update_request")
@@ -93,6 +104,9 @@ def on_status_update(action: dict) -> None:
         Dictionary containing the action trigger.
     """
     logger.info(f"Change status event received: {action}")
+    if this.trigger_recorder is None:
+        logger.error("No trigger instance available. Cannot perform action.")
+        return
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
         if not this.trigger_recorder.stream_thread_is_running:

@@ -170,6 +170,31 @@ class AudioRecorder:
             pass
         stream.close()
 
+    def try_open_stream(self, input_device_index: Optional[int] = None) -> bool:
+        """
+        Try opening the audio stream to verify the number of channels are supported by the selected audio input
+        device.
+
+        Parameters
+        ----------
+        input_device_index : Optional[int]
+            The index of the input device.
+
+        Returns
+        -------
+        bool
+            True if the stream was successfully opened, False otherwise.
+        """
+        try:
+            stream = self.p.open(format=pyaudio.paInt16,
+                                 channels=self.channels,
+                                 rate=self.rate, input=True, input_device_index=input_device_index)
+            self.p.close(stream)
+            return True
+        except OSError:
+            return False
+
+
     def start_stream(self,
                      input_device_index: Optional[int] = None,
                      cb: Optional[Callable[[bytes, int, dict, int], Tuple[bytes, int]]] = None) -> None:
@@ -424,12 +449,14 @@ class AudioTriggerRecorder(AudioRecorder):
         if self.__last_trigger_time is not None:
             time_diff = time.time() - self.__last_trigger_time
             if time_diff < 1:
-                logger.debug(f"AudioTriggerRecorder callback processing temporarily disabled. Time diff: {time_diff} < 1")
+                logger.debug(
+                    f"AudioTriggerRecorder callback processing temporarily disabled. Time diff: {time_diff} < 1")
                 return input_data, pyaudio.paContinue
             else:
                 # update status to running if timeout is over
                 if self.socket is not None:
-                    self.socket.emit("status_update_complete", {"status": "running", "save_location": self.rec_destination})
+                    self.socket.emit("status_update_complete",
+                                     {"status": "running", "save_location": self.rec_destination})
                     self.__last_trigger_time = None
 
         if len(self.frames) == self.frames.maxlen:
@@ -441,14 +468,15 @@ class AudioTriggerRecorder(AudioRecorder):
                                                freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(audio, self.rate, corr_dict=self.calib_factors)
             is_trig = self.trigger.trigger(sound, dom_freq, dba_level, score,
-                                            trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
+                                           trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
             if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))
                 self.__last_trigger_time = time.time()
                 if self.socket is not None:
                     # update status to waiting if trigger was detected
-                    self.socket.emit("status_update_complete", {"status": "waiting", "save_location": self.rec_destination})
+                    self.socket.emit("status_update_complete",
+                                     {"status": "waiting", "save_location": self.rec_destination})
         return input_data, pyaudio.paContinue
 
     def stop_trigger(self) -> None:  # pragma: no cover

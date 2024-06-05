@@ -148,8 +148,21 @@ def disconnected() -> None:
         if client["sid"] == request.sid:
             this.connected_clients.pop(idx)
             leave_room("client_room", request.sid)
-            emit("clients", this.connected_clients, broadcast=True)
+            emit("clients", this.connected_clients, broadcast=True, skip_sid=request.sid)
     logger.info(f"Client: {request.sid} disconnected.")
+
+
+@server.on("client_error")
+def on_client_error(error_msg) -> None:
+    """Event handler for the "client_error" event. Emitted to by the audio trigger client when an error occurs.
+
+    Parameters
+    ----------
+    error_msg: str
+        The error message.
+    """
+    logger.error(f"Client: {request.sid} emitted error: {error_msg}")
+    emit("client_error", error_msg, to="client_room", skip_sid=request.sid)
 
 
 @server.on("register")
@@ -166,12 +179,14 @@ def on_register_client(data: dict) -> None:
     """
     logger.info(f"Received register event from sid: {request.sid} with data: {data}")
     # check if another client with same type is already connected, except for "web_patient" type
+    """
     for client in this.connected_clients:
         if client["type"] == data["type"] and client["type"] != "web_patient":
             # disconnect emitting if that is the case
             disconnect(request.sid)
             logger.debug(f"Client with same type: {data['type']} already exists, disconnecting...")
             return
+    """
     # add new client to connected_clients and emit updated list to all clients
     this.connected_clients.append({"sid": request.sid, "type": data["type"]})
     # add client to 'client_room'
