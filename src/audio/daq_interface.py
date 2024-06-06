@@ -120,7 +120,12 @@ class DAQ_Device:
 
                 timestamps = np.array([x/self.sample_rate for x in range(self.num_samples)])
                 measurements = np.array(task_in.read(number_of_samples_per_channel=self.num_samples))
-                data = np.hstack((timestamps[:, np.newaxis], measurements[:, np.newaxis]))
+                
+                # extract every dimension from measurements (each is an input channel) and collect every data to save in list
+                d_list = [timestamps[:, np.newaxis]]
+                for dim in measurements:
+                    d_list.append(dim[:, np.newaxis])
+                data = np.hstack(tuple(d_list))
             except nidaqmx.errors.DaqError:
                 logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
         if data is not None:
