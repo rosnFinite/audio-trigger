@@ -39,6 +39,33 @@ class DAQ_Device:
             self.digital_trig_channel = digital_trig_channel
             self.sample_rate = sample_rate
             self.num_samples = num_samples
+        self.task_in = nidaqmx.Task()
+        self.task_out = nidaqmx.Task()
+        self.setup_tasks()
+    
+    def setup_tasks(self):
+        #TODO: handling os DAQError
+        for ai_channel in self.analog_input_channels:
+            self.task_in.ai_channels.add_ai_voltage_chan(f"/Dev1/{ai_channel}")
+        self.task_in.timing.cfg_samp_clk_timing(
+            rate=self.sample_rate,
+            sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
+            samps_per_chan=self.num_samples
+        )
+        # reference trigger for analog input task
+        self.task_in.triggers.start_trigger.cfg_dig_edge_start_trig(
+            trigger_source=f"/{self.device.name}/{self.dig_out}",
+            trigger_edge=nidaqmx.constants.Edge.RISING
+        )
+        self.task_in.start()
+        
+        # SETUP TASK OUT
+        # configure digital trigger output for acquisition and camera recording
+        self.task_out.do_channels.add_do_chan(
+            lines=f"/{self.device.name}/{self.dig_out}",
+            line_grouping=nidaqmx.constants.LineGrouping.CHAN_PER_LINE
+        )
+        
 
     @staticmethod
     def __select_daq(device_id: str = None) -> Optional[nidaqmx.system.Device]:
@@ -74,7 +101,7 @@ class DAQ_Device:
             logger.critical("NI-DAQmx not supported on this device. Continuing without...")
             return None
 
-    def start_acquisition(self, save_dir: str) -> None:
+    def start_acquisition_old(self, save_dir: str) -> None:
         """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
         Provided 'save_dir' must be a valid path to a directory where the data will be saved. Filename will be
         'measurements.csv'.
@@ -139,3 +166,49 @@ class DAQ_Device:
             with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
                 print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
                       "is reserving/using DAQ resources.", file=error_file)
+    
+    def start_acquisition(self, save_dir: str) -> None:
+        """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
+        Provided 'save_dir' must be a valid path to a directory where the data will be saved. Filename will be
+        'measurements.csv'.
+        Full path -> 'save_dir'/measurements.csv
+
+        Parameters
+        ----------
+        save_dir : str
+            Parent directory path where the acquired data will be saved as 'measurements.csv'.
+        """
+        if self.device is None:
+            raise AttributeError("No DAQ device connected. Cannot start acquisition.")
+            
+        data = None
+        try:
+            self.task_out.write([True])
+            self.task_out.write([False])
+
+            timestamps = np.array([x/self.sample_rate for x in range(self.num_samples)])
+            measurements = np.zeros([len(self.analog_input_channels), self.num_samples])
+            self.reader.read_many_sample(data = measurements, 
+                                    number_of_samples_per_channel = self.num_samples)
+            
+            # extract every dimension from measurements (each is an input channel) and collect every data to save in list
+            d_list = [timestamps[:, np.newaxis]]
+            if len(measurements.shape) == 2:
+                for dim in measurements:
+                    d_list.append(dim[:, np.newaxis])
+            else:
+                d_list.append(measurements[:, np.newaxis])
+            
+            data = np.hstack(tuple(d_list))
+        except nidaqmx.errors.DaqError:
+            logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
+        if data is not None:
+            header = ",".join(["time"] + self.analog_input_channels)
+            np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",", header=header, comments="")
+        else:
+            with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
+                print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
+                      "is reserving/using DAQ resources.", file=error_file)
+        self.task_in.stop()
+        self.task_in.close()
+        self.task_out.close()
