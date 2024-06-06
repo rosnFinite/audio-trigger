@@ -8,6 +8,8 @@ import nidaqmx.errors
 import nidaqmx.system
 import numpy as np
 
+from nidaqmx.stream_readers import AnalogMultiChannelReader
+
 from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
@@ -42,11 +44,13 @@ class DAQ_Device:
         self.task_in = nidaqmx.Task()
         self.task_out = nidaqmx.Task()
         self.setup_tasks()
+        self.reader = AnalogMultiChannelReader(self.task_in.in_stream)
+        self.reader.wait_mode = nidaqmx.constants.WaitMode.POLL
     
     def setup_tasks(self):
         #TODO: handling os DAQError
         for ai_channel in self.analog_input_channels:
-            self.task_in.ai_channels.add_ai_voltage_chan(f"/Dev1/{ai_channel}")
+            self.task_in.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
         self.task_in.timing.cfg_samp_clk_timing(
             rate=self.sample_rate,
             sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
@@ -54,7 +58,7 @@ class DAQ_Device:
         )
         # reference trigger for analog input task
         self.task_in.triggers.start_trigger.cfg_dig_edge_start_trig(
-            trigger_source=f"/{self.device.name}/{self.dig_out}",
+            trigger_source=f"/{self.device.name}/{self.digital_trig_channel}",
             trigger_edge=nidaqmx.constants.Edge.RISING
         )
         self.task_in.start()
@@ -62,7 +66,7 @@ class DAQ_Device:
         # SETUP TASK OUT
         # configure digital trigger output for acquisition and camera recording
         self.task_out.do_channels.add_do_chan(
-            lines=f"/{self.device.name}/{self.dig_out}",
+            lines=f"/{self.device.name}/{self.digital_trig_channel}",
             line_grouping=nidaqmx.constants.LineGrouping.CHAN_PER_LINE
         )
         
