@@ -123,8 +123,12 @@ class DAQ_Device:
                 
                 # extract every dimension from measurements (each is an input channel) and collect every data to save in list
                 d_list = [timestamps[:, np.newaxis]]
-                for dim in measurements:
-                    d_list.append(dim[:, np.newaxis])
+                if len(measurements.shape) == 2:
+                    for dim in measurements:
+                        d_list.append(dim[:, np.newaxis])
+                else:
+                    d_list.append(measurements[:, np.newaxis])
+                
                 data = np.hstack(tuple(d_list))
             except nidaqmx.errors.DaqError:
                 logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
