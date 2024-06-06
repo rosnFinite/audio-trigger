@@ -45,7 +45,7 @@ if __name__ == "__main__":
         # Handle keyboard interrupt (Ctrl+C) to gracefully terminate processes
         gracefully_terminate(processes=processes)
     except FileNotFoundError as e:
-        logger.critical(f"Festgelegter Speicherort für den Triggerprozess [{CONFIG["client_recordings_path"]}] oder für die Kamera [{CONFIG["camera_recordings_path"]}] konnte nicht gefunden werden.")
+        logger.critical(f"Festgelegter Speicherort für den Triggerprozess [{CONFIG['client_recordings_path']}] oder für die Kamera [{CONFIG['camera_recordings_path']}] konnte nicht gefunden werden.")
         # gracefully terminating processes
         gracefully_terminate(processes=processes)
     except Exception as e:
