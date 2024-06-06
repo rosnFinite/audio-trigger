@@ -1,11 +1,15 @@
 import logging
 import multiprocessing
+import sys
 import time
 
 from src.backend.server import run_server
 from src.backend.client import run_client
 from src.file_watcher.watcher import run_watcher
 from src.config_utils import CONFIG
+
+# solution for path problems using vscode
+sys.path.append("D:\\rosef\\audio-trigger")
 
 logging.basicConfig(
     format='%(levelname)-8s | %(asctime)s | %(filename)s%(lineno)s | %(message)s',
@@ -14,6 +18,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
+
+def gracefully_terminate(processes):
+    for proc in processes:
+        proc.terminate()
 
 if __name__ == "__main__":
     processes = []
@@ -35,8 +43,11 @@ if __name__ == "__main__":
             time.sleep(1)
     except KeyboardInterrupt:
         # Handle keyboard interrupt (Ctrl+C) to gracefully terminate processes
-        for proc in processes:
-            proc.terminate()
+        gracefully_terminate(processes=processes)
+    except FileNotFoundError as e:
+        logger.critical(f"Festgelegter Speicherort für den Triggerprozess [{CONFIG["client_recordings_path"]}] oder für die Kamera [{CONFIG["camera_recordings_path"]}] konnte nicht gefunden werden.")
+        # gracefully terminating processes
+        gracefully_terminate(processes=processes)
     except Exception as e:
         logger.exception(e)
 
