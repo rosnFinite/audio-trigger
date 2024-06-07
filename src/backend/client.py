@@ -91,6 +91,8 @@ def on_settings_change(settings: dict) -> None:
         emit_exception(client, exception_level="critical", exception_title="Prozess konnte nicht gestartet werden!",
                        exception_description="Aufnahmegerät unterstützt NICHT die eingestellte "
                                              "Anzahl an Kanälen. Gerät oder Kanalanzahl anpassen.")
+        client.emit("status_update_complete",
+                    {"status": "offline", "save_location": None})
 
 
 @client.on("status_update_request")
