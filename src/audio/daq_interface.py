@@ -1,6 +1,8 @@
 import logging
 import os
-from typing import List, Optional
+import concurrent.futures
+import threading
+import time
 import nidaqmx
 import nidaqmx.constants
 import nidaqmx.error_codes
@@ -8,7 +10,9 @@ import nidaqmx.errors
 import nidaqmx.system
 import numpy as np
 
+from typing import List, Optional
 from nidaqmx.stream_readers import AnalogMultiChannelReader
+from nidaqmx.stream_writers import DigitalSingleChannelWriter
 
 from src.config_utils import CONFIG
 
@@ -18,8 +22,8 @@ logger.setLevel(logging.DEBUG)
 
 class DAQ_Device:
     def __init__(self,
-                 sample_rate: Optional[int] = 1000,
-                 num_samples: Optional[int] = 1000,
+                 sample_rate: Optional[int] = 20000,
+                 sampling_time: Optional[float] = None,
                  analog_input_channels: Optional[List[str]] = None,
                  digital_trig_channel: Optional[str] = None,
                  device_id: Optional[str] = None,
@@ -29,7 +33,8 @@ class DAQ_Device:
             self.analog_input_channels = CONFIG["voice_field"]["analog_input_channels"]
             self.digital_trig_channel = CONFIG["voice_field"]["digital_trigger_channel"]
             self.sample_rate = CONFIG["voice_field"]["sample_rate"]
-            self.num_samples = CONFIG["voice_field"]["number_of_samples"]
+            self.sampling_time = CONFIG["recorder"]["buffer_size"]
+            self.num_samples = int(self.sample_rate * self.sampling_time)
         else:
             if analog_input_channels is None or digital_trig_channel is None:
                 raise ValueError("analog_input_channels and digital_trig_channel need to be provided.")
@@ -37,40 +42,72 @@ class DAQ_Device:
                 raise TypeError("analog_input_channels must be a list of strings.")
             if type(digital_trig_channel) is not str:
                 raise TypeError("digital_trig_channel must be a string.")
+            if sampling_time is None:
+                raise ValueError(f"sampling_time needs to be provided to calculate number of samples to acquire per channel")
             self.analog_input_channels = analog_input_channels
             self.digital_trig_channel = digital_trig_channel
             self.sample_rate = sample_rate
-            self.num_samples = num_samples
-        self.task_in = nidaqmx.Task()
-        self.task_out = nidaqmx.Task()
-        self.setup_tasks()
-        self.reader = AnalogMultiChannelReader(self.task_in.in_stream)
-        self.reader.wait_mode = nidaqmx.constants.WaitMode.POLL
+            self.sampling_time = sampling_time
+            self.num_samples = int(sample_rate * sampling_time)
+        self.task_in = nidaqmx.Task(new_task_name="AcquisitionTask")
+        self.task_out = nidaqmx.Task(new_task_name="TriggerTask")
+        self.reader = None
+        self.writer = None
+        self.__setup_tasks()
+        logger.debug(f"Tasks created - input_buf_size: {self.task_in.in_stream.input_buf_size}, auto_start: {self.task_in.in_stream.auto_start}, channels_to_read: {self.task_in.in_stream.channels_to_read}, avail_samp_per_chan: {self.task_in.in_stream.avail_samp_per_chan}, input_onbrd_buf_size: {self.task_in.in_stream.input_onbrd_buf_size}, offset: {self.task_in.in_stream.offset}")
+        
+        # attributes for the thread pool
+        self._file_lock = threading.Lock()
+        self.id = 0
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     
-    def setup_tasks(self):
+    def __setup_tasks(self):
         #TODO: handling os DAQError
         for ai_channel in self.analog_input_channels:
             self.task_in.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
         self.task_in.timing.cfg_samp_clk_timing(
             rate=self.sample_rate,
-            sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
+            sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
             samps_per_chan=self.num_samples
         )
-        # reference trigger for analog input task
-        self.task_in.triggers.start_trigger.cfg_dig_edge_start_trig(
+        self.task_in.triggers.reference_trigger.cfg_dig_edge_ref_trig(
+            pretrigger_samples=self.num_samples-2,
             trigger_source=f"/{self.device.name}/{self.digital_trig_channel}",
             trigger_edge=nidaqmx.constants.Edge.RISING
         )
+        
         self.task_in.start()
         
-        # SETUP TASK OUT
-        # configure digital trigger output for acquisition and camera recording
         self.task_out.do_channels.add_do_chan(
             lines=f"/{self.device.name}/{self.digital_trig_channel}",
             line_grouping=nidaqmx.constants.LineGrouping.CHAN_PER_LINE
         )
         
-
+        self.task_out.start()
+        
+        self.reader = AnalogMultiChannelReader(self.task_in.in_stream)
+        self.writer = DigitalSingleChannelWriter(self.task_out.out_stream)
+        
+        self.writer.write_many_sample_port_uint16(data=np.array([5, 0], dtype=np.uint16), timeout=1)
+        
+        # giving enough time to the task to read samples and initially fill buffer
+        time.sleep(self.sampling_time*3)
+        
+        self.task_in.in_stream.relative_to = nidaqmx.constants.ReadRelativeTo.MOST_RECENT_SAMPLE
+        self.task_in.in_stream.offset = self.num_samples * -1 + 2
+        
+    def __save_as_csv(self, data, save_dir):
+        logger.debug("Acquiring lock")
+        with self._file_lock:
+            if data is not None:
+                header = ",".join(["time"] + self.analog_input_channels)
+                np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",", header=header, comments="")
+            else:
+                with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
+                    print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
+                        "is reserving/using DAQ resources.", file=error_file)
+            logger.debug(f"measurement file written to {save_dir}")
+    
     @staticmethod
     def __select_daq(device_id: str = None) -> Optional[nidaqmx.system.Device]:
         """Selects a connected NI-DAQmx device either by providing its id or by
@@ -184,16 +221,15 @@ class DAQ_Device:
         """
         if self.device is None:
             raise AttributeError("No DAQ device connected. Cannot start acquisition.")
-            
         data = None
         try:
-            self.task_out.write([True])
-            self.task_out.write([False])
+            # create trigger signal
+            self.writer.write_many_sample_port_uint16(data=np.array([5, 0], dtype=np.uint16))
 
             timestamps = np.array([x/self.sample_rate for x in range(self.num_samples)])
             measurements = np.zeros([len(self.analog_input_channels), self.num_samples])
             self.reader.read_many_sample(data = measurements, 
-                                    number_of_samples_per_channel = self.num_samples)
+                                    number_of_samples_per_channel = self.num_samples, timeout=-1)
             
             # extract every dimension from measurements (each is an input channel) and collect every data to save in list
             d_list = [timestamps[:, np.newaxis]]
@@ -204,15 +240,15 @@ class DAQ_Device:
                 d_list.append(measurements[:, np.newaxis])
             
             data = np.hstack(tuple(d_list))
+            self.__save_as_csv(data, save_dir)
+        except nidaqmx.errors.DaqError as e:
+            logger.critical(e)
+            self.delete_all_tasks()   
+        
+    
+    def delete_all_tasks(self):
+        try:
+            self.task_in.close()
+            self.task_out.close()
         except nidaqmx.errors.DaqError:
-            logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
-        if data is not None:
-            header = ",".join(["time"] + self.analog_input_channels)
-            np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",", header=header, comments="")
-        else:
-            with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
-                print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
-                      "is reserving/using DAQ resources.", file=error_file)
-        self.task_in.stop()
-        self.task_in.close()
-        self.task_out.close()
+            logger.warning("Tasks seem to be closed already.")

@@ -58,7 +58,8 @@ def on_settings_change(settings: dict) -> None:
         destination = os.path.join(CONFIG["client_recordings_path"], f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
     else:
         destination = os.path.join(CONFIG["client_recordings_path"], f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
-
+    if this.trigger_recorder is not None:
+        this.trigger_recorder.trigger.daq.delete_all_tasks()
     this.trigger_recorder = AudioTriggerRecorder(rec_destination=destination,
                                                  min_score=settings["min_score"],
                                                  retrigger_percentage_improvement=settings["retrigger_percentage_improvement"],

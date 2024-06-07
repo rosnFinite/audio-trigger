@@ -642,7 +642,7 @@ class Trigger:
         try:
             self.daq.start_acquisition(save_dir=data_dir)
         except AttributeError as e:
-            logger.critical("DAQ device not connected. Cannot start acquisition.")
+            logger.critical(e)
         praat_stats = measure_praat_stats(sound, fmin=self.voice_field.freq_min, fmax=self.voice_field.freq_max)
         self.emit_trigger(freq_bin, db_bin, score, praat_stats)
         self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, db_bin,
