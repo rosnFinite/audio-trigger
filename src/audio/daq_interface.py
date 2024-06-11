@@ -49,10 +49,8 @@ class DAQ_Device:
             self.sample_rate = sample_rate
             self.sampling_time = sampling_time
             self.num_samples = int(sample_rate * sampling_time)
-        self.task_in = nidaqmx.Task(new_task_name="AcquisitionTask")
-        self.task_out = nidaqmx.Task(new_task_name="TriggerTask")
-        self.reader = None
-        self.writer = None
+        self.task_in = nidaqmx.Task()
+        self.task_out = nidaqmx.Task()
         self.__setup_tasks()
         logger.debug(f"Tasks created - input_buf_size: {self.task_in.in_stream.input_buf_size}, auto_start: {self.task_in.in_stream.auto_start}, channels_to_read: {self.task_in.in_stream.channels_to_read}, avail_samp_per_chan: {self.task_in.in_stream.avail_samp_per_chan}, input_onbrd_buf_size: {self.task_in.in_stream.input_onbrd_buf_size}, offset: {self.task_in.in_stream.offset}")
         
@@ -61,8 +59,9 @@ class DAQ_Device:
         self.id = 0
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     
-    def __setup_tasks(self):
-        #TODO: handling os DAQError
+    def __reinit_in_task(self):
+        self.task_in.close()
+        self.task_in = nidaqmx.Task()
         for ai_channel in self.analog_input_channels:
             self.task_in.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
         self.task_in.timing.cfg_samp_clk_timing(
@@ -75,8 +74,12 @@ class DAQ_Device:
             trigger_source=f"/{self.device.name}/{self.digital_trig_channel}",
             trigger_edge=nidaqmx.constants.Edge.RISING
         )
-        
+        self.task_in.in_stream.over_write = nidaqmx.constants.OverwriteMode.OVERWRITE_UNREAD_SAMPLES
+        self.task_in.in_stream.relative_to = nidaqmx.constants.ReadRelativeTo.FIRST_PRETRIGGER_SAMPLE
         self.task_in.start()
+    
+    def __setup_tasks(self):
+        self.__reinit_in_task()
         
         self.task_out.do_channels.add_do_chan(
             lines=f"/{self.device.name}/{self.digital_trig_channel}",
@@ -84,17 +87,6 @@ class DAQ_Device:
         )
         
         self.task_out.start()
-        
-        self.reader = AnalogMultiChannelReader(self.task_in.in_stream)
-        self.writer = DigitalSingleChannelWriter(self.task_out.out_stream)
-        
-        self.writer.write_many_sample_port_uint16(data=np.array([5, 0], dtype=np.uint16), timeout=1)
-        
-        # giving enough time to the task to read samples and initially fill buffer
-        time.sleep(self.sampling_time*3)
-        
-        self.task_in.in_stream.relative_to = nidaqmx.constants.ReadRelativeTo.MOST_RECENT_SAMPLE
-        self.task_in.in_stream.offset = self.num_samples * -1 + 2
         
     def __save_as_csv(self, data, save_dir):
         logger.debug("Acquiring lock")
@@ -223,14 +215,14 @@ class DAQ_Device:
             raise AttributeError("No DAQ device connected. Cannot start acquisition.")
         data = None
         try:
+            print("STARTING")
             # create trigger signal
-            self.writer.write_many_sample_port_uint16(data=np.array([5, 0], dtype=np.uint16))
-
-            timestamps = np.array([x/self.sample_rate for x in range(self.num_samples)])
-            measurements = np.zeros([len(self.analog_input_channels), self.num_samples])
-            self.reader.read_many_sample(data = measurements, 
-                                    number_of_samples_per_channel = self.num_samples, timeout=-1)
+            self.task_out.write([True, False])
             
+            measurements = self.task_in.read(number_of_samples_per_channel=nidaqmx.constants.READ_ALL_AVAILABLE)
+            timestamps = np.array([x/self.sample_rate for x in range(len(measurements))])
+            
+            measurements = np.array(measurements)
             # extract every dimension from measurements (each is an input channel) and collect every data to save in list
             d_list = [timestamps[:, np.newaxis]]
             if len(measurements.shape) == 2:
@@ -242,8 +234,12 @@ class DAQ_Device:
             data = np.hstack(tuple(d_list))
             self.__save_as_csv(data, save_dir)
         except nidaqmx.errors.DaqError as e:
+            print("HIER")
             logger.critical(e)
-            self.delete_all_tasks()   
+            self.delete_all_tasks()
+        # prepare for next acquisition
+        # in_task needs to be reinit to be able to retrigger
+        self.__reinit_in_task()   
         
     
     def delete_all_tasks(self):
