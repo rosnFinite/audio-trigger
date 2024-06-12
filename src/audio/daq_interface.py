@@ -89,16 +89,17 @@ class DAQ_Device:
         self.task_out.start()
         
     def __save_as_csv(self, data, save_dir):
-        logger.debug("Acquiring lock")
         with self._file_lock:
             if data is not None:
                 header = ",".join(["time"] + self.analog_input_channels)
-                np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",", header=header, comments="")
+                save_path = os.path.join(save_dir, "measurement.csv")
+                np.savetxt(save_path, data, delimiter=",", header=header, comments="")
+                logger.info(f"Successfully saved acquired DAQ data and saved it to {save_path}")
             else:
+                logger.warning("No data has been acquired to be stored.")
                 with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
                     print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
                         "is reserving/using DAQ resources.", file=error_file)
-            logger.debug(f"measurement file written to {save_dir}")
     
     @staticmethod
     def __select_daq(device_id: str = None) -> Optional[nidaqmx.system.Device]:
@@ -133,72 +134,6 @@ class DAQ_Device:
         except nidaqmx.errors.DaqNotSupportedError:
             logger.critical("NI-DAQmx not supported on this device. Continuing without...")
             return None
-
-    def start_acquisition_old(self, save_dir: str) -> None:
-        """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
-        Provided 'save_dir' must be a valid path to a directory where the data will be saved. Filename will be
-        'measurements.csv'.
-        Full path -> 'save_dir'/measurements.csv
-
-        Parameters
-        ----------
-        save_dir : str
-            Parent directory path where the acquired data will be saved as 'measurements.csv'.
-        """
-        if self.device is None:
-            raise AttributeError("No DAQ device connected. Cannot start acquisition.")
-        with nidaqmx.Task() as task_in, nidaqmx.Task() as task_trig:
-            # configure analog input channels
-            for ai_channel in self.analog_input_channels:
-                task_in.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
-
-            # timing for analog task
-            task_in.timing.cfg_samp_clk_timing(
-                rate=self.sample_rate,
-                sample_mode=nidaqmx.constants.AcquisitionType.FINITE,
-                samps_per_chan=self.num_samples
-            )
-
-            # reference trigger for analog input task
-            task_in.triggers.start_trigger.cfg_dig_edge_start_trig(
-                trigger_source=f"/{self.device.name}/{self.digital_trig_channel}",
-                trigger_edge=nidaqmx.constants.Edge.RISING
-            )
-
-            # configure digital trigger output for acquisition and camera recording
-            task_trig.do_channels.add_do_chan(
-                lines=f"/{self.device.name}/{self.digital_trig_channel}",
-                line_grouping=nidaqmx.constants.LineGrouping.CHAN_PER_LINE
-            )
-            
-            data = None
-            try:
-                task_in.start()
-                
-                task_trig.write([True])
-                task_trig.write([False])
-
-                timestamps = np.array([x/self.sample_rate for x in range(self.num_samples)])
-                measurements = np.array(task_in.read(number_of_samples_per_channel=self.num_samples))
-                
-                # extract every dimension from measurements (each is an input channel) and collect every data to save in list
-                d_list = [timestamps[:, np.newaxis]]
-                if len(measurements.shape) == 2:
-                    for dim in measurements:
-                        d_list.append(dim[:, np.newaxis])
-                else:
-                    d_list.append(measurements[:, np.newaxis])
-                
-                data = np.hstack(tuple(d_list))
-            except nidaqmx.errors.DaqError:
-                logger.critical("DAQ process could NOT be started. Check if another program is accessing DAQ resources.")
-        if data is not None:
-            header = ",".join(["time"] + self.analog_input_channels)
-            np.savetxt(os.path.join(save_dir, "measurements.csv"), data, delimiter=",", header=header, comments="")
-        else:
-            with open(os.path.join(save_dir, "measurment_error_info.txt"), "w") as error_file:
-                print("Critical error occured. DAQ measurement process could NOT be started. Check if another program "
-                      "is reserving/using DAQ resources.", file=error_file)
     
     def start_acquisition(self, save_dir: str) -> None:
         """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
@@ -215,7 +150,7 @@ class DAQ_Device:
             raise AttributeError("No DAQ device connected. Cannot start acquisition.")
         data = None
         try:
-            print("STARTING")
+            logger.debug("Starting acquisition...")
             # create trigger signal
             self.task_out.write([True, False])
             
@@ -234,7 +169,6 @@ class DAQ_Device:
             data = np.hstack(tuple(d_list))
             self.__save_as_csv(data, save_dir)
         except nidaqmx.errors.DaqError as e:
-            print("HIER")
             logger.critical(e)
             self.delete_all_tasks()
         # prepare for next acquisition

@@ -442,6 +442,7 @@ class AudioTriggerRecorder(AudioRecorder):
         Tuple[bytes, int]
             A tuple containing the modified input data and the status code.
         """
+        cb_start_t = time.time()
         frame = np.frombuffer(input_data, dtype=np.int16)
         self.frames.append(frame)
         # disable trigger / voice processing after a trigger for 1 second
@@ -467,8 +468,9 @@ class AudioTriggerRecorder(AudioRecorder):
                                                freq_floor=self.voice_field.freq_min,
                                                freq_ceiling=self.rate // 2)
             dba_level = get_dba_level(audio, self.rate, corr_dict=self.calib_factors)
+            logger.debug(f"RUNTIME RECORDING -> TRIGGER CALL {time.time() - cb_start_t:.4f}s")
             is_trig = self.trigger.trigger(sound, dom_freq, dba_level, score,
-                                           trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate})
+                                           trigger_data={"audio": audio, "egg": egg, "sampling_rate": self.rate}, cb_start_t=cb_start_t)
             if is_trig:
                 self.frames = collections.deque([] * int((self.buffer_size * self.rate) / self.chunk_size),
                                                 maxlen=int((self.buffer_size * self.rate) / self.chunk_size))

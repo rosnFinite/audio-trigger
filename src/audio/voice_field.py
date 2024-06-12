@@ -592,7 +592,7 @@ class Trigger:
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
     def __perform_trigger(self, sound: parselmouth.Sound, freq, freq_bin: int, db_bin: int, score: float,
-                          trigger_data: dict) -> None:
+                          trigger_data: dict, cb_start_t) -> None:
         """
         Adds a new trigger and processes associated data.
 
@@ -632,6 +632,7 @@ class Trigger:
         """
         self.id += 1
         self.voice_field.update_field_at(db_bin, freq_bin, score)
+        # TODO: Needs to be sped up, especially the call to local file system (takes a proportionally long time ~100ms)
         data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{db_bin}_{freq_bin}"))
 
         # create a file named after newly added folder to parent dir of client recordings
@@ -640,6 +641,7 @@ class Trigger:
             f.write(data_dir)
 
         try:
+            logger.debug(f"RUNTIME RECORDING -> ACQUISITON {time.time() - cb_start_t:.4f}s")
             self.daq.start_acquisition(save_dir=data_dir)
         except AttributeError as e:
             logger.critical(e)
@@ -649,7 +651,7 @@ class Trigger:
                                       self.id)
 
     def trigger(self, sound: parselmouth.Sound, freq: float, db: float, score: float,
-                trigger_data: dict) -> bool:
+                trigger_data: dict, cb_start_t) -> bool:
         """
         Adds a trigger point to the recorder if certain conditions are met.
 
@@ -708,7 +710,8 @@ class Trigger:
         existing_score = self.voice_field.get_field_score_at(db_bin, freq_bin)
         # add trigger if no previous entry exists
         if existing_score is None:
-            self.__perform_trigger(sound, freq, freq_bin, db_bin, score, trigger_data)
+            logger.debug(f"RUNTIME RECORDING -> __PERFORM_TRIGGER {time.time() - cb_start_t:.4f}s")
+            self.__perform_trigger(sound, freq, freq_bin, db_bin, score, trigger_data, cb_start_t)
             logger.info(f"VOICE_FIELD entry added - score: {score}, "
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
