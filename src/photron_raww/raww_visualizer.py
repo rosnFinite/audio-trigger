@@ -4,7 +4,7 @@ import numpy as np
 from PIL import Image
 from typing import Optional
 
-from . import cihx_parser
+from src.photron_raww import cihx_parser
 
 
 def transform_images(path: str, save_path: str, metadata_path: Optional[str] = None) -> None:
@@ -110,7 +110,7 @@ def transform_image(path: str, save_path: str, metadata_path: str):
     # Pillow.Image transforms 16-bit color information to 8-bit
     img = Image.fromarray(bin_image.reshape(img_metadata["width"], img_metadata["height"])).convert("L")
     filename = os.path.split(path)[1].split(".raww")[0]
-    img.save(os.path.join(save_path, f"{filename}.jpg"))
+    img.save(os.path.join(save_path, f"{filename}.png"), format="png", bits=16)
 
 
 if __name__ == "__main__":
