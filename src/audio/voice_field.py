@@ -716,7 +716,7 @@ class Trigger:
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_percentage_improvement] % better than of existing score
-        if existing_score < score and score / existing_score - 1 > self.retrigger_percentage_improvement:
+        if existing_score < score and score / existing_score - 1 >= self.retrigger_percentage_improvement:
             self.__perform_trigger(sound, freq, freq_bin, db_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
