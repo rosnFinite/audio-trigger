@@ -79,6 +79,8 @@ class DAQ_Device:
         self.task_in.start()
     
     def __setup_tasks(self):
+        if self.device is None:
+            return
         self.__reinit_in_task()
         
         self.task_out.do_channels.add_do_chan(
