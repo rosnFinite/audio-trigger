@@ -75,12 +75,12 @@ def calc_pitch_score(data: Optional[np.ndarray] = None,
             raise ValueError("No frequency bounds provided.")
 
     # intensity score via standard deviation 1 = high consistency, 0 = low consistency over time
-    intensity = sound.to_intensity(time_step=0.01)
+    intensity = sound.to_intensity(time_step=0.001)
     intensity_std = np.std(intensity.values)
     intensity_score = 1 / (1 + intensity_std)
 
     # frequency score
-    pitch = sound.to_pitch(time_step=0.01, pitch_floor=freq_floor, pitch_ceiling=freq_ceiling)
+    pitch = sound.to_pitch(time_step=0.001, pitch_floor=freq_floor, pitch_ceiling=freq_ceiling)
     pitch_values = [val[0] for val in pitch.selected_array]
     pitch_std = np.std(pitch_values)
     pitch_score = 1 / (1 + pitch_std)
