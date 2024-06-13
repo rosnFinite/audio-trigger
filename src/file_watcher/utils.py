@@ -38,19 +38,22 @@ def create_visualizations(get_event):
     pitch = sound.to_pitch()
     
     egg_path = os.path.join(parent_dir, "egg.npy")
+    egg_data = None
     if os.path.exists(egg_path):
         egg_data = np.load(egg_path)
 
     with plot_lock:
         plot_waveform(sound, parent_dir)
         plot_spectrogram_and_intensity(sound, spectrogram, intensity, parent_dir)
-        plot_egg_data(egg_data, parent_dir)
-    # store parselmouth pitch information
-
-    with open(f"{parent_dir}/parsel_stats.txt", "w") as f:
-        print(sound, file=f)
-        print(pitch, file=f)
-        print(intensity, file=f)
+        if egg_data is not None:
+            plot_egg_data(egg_data, parent_dir)
+        # store parselmouth pitch information
+        logger.critical(f"Saving parselmouth stats to {parent_dir}...")
+        with open(os.path.join(parent_dir, "parsel_stats.txt"), "w") as f:
+            print(sound, file=f)
+            print(pitch, file=f)
+            print(intensity, file=f)
+        print("Done")
 
 
 def plot_waveform(data, location):
@@ -146,7 +149,7 @@ def create_image_grid(get_event):
     raww_to_jpg(img_paths, meta_path, get_event["dir_trigger"])
     # create image grid for frontend visualization
     # get file names for transformed images
-    image_files = image_files = [f"{os.path.join(get_event['dir_trigger'], os.path.split(f)[-1].split('.')[0])}.jpg"
+    image_files = image_files = [f"{os.path.join(get_event['dir_trigger'], os.path.split(f)[-1].split('.')[0])}.png"
                                  for f in img_paths]
     images = [Image.open(f) for f in image_files]
     # assuming all images are the same size
@@ -156,7 +159,7 @@ def create_image_grid(get_event):
     grid.paste(images[1], (width, 0))
     grid.paste(images[2], (0, height))
     grid.paste(images[3], (width, height))
-    grid.save(f"{get_event['dir_trigger']}/image_grid.jpg")
+    grid.save(f"{get_event['dir_trigger']}/image_grid.png")
 
 
 def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):
@@ -181,3 +184,18 @@ def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):
             logger.error(e)
             continue
 
+if __name__ == "__main__":
+    event = {
+        "id":"111",
+        "dir_path": "anything",
+        "dir_trigger": "C:\\Users\\fabio\PycharmProjects\\audio-trigger\\src\\photron_raww\\test\\data",
+        "images": [
+            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
+            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
+            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
+            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww"
+        ],
+        "meta": "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\\photron_raww\\test\\data\\TEST_C001H001S0002.cihx"
+    }
+
+    create_image_grid(event)
