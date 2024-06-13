@@ -36,6 +36,14 @@ def create_visualizations(get_event):
     intensity = sound.to_intensity()
     spectrogram = sound.to_spectrogram()
     pitch = sound.to_pitch()
+
+    # get daq measurements
+    daq_data = None
+    daq_header = None
+    if os.path.exists(os.path.join(parent_dir, "measurements.csv")):
+        daq_csv = np.genfromtxt(os.path.join(parent_dir, "measurements.csv"), delimiter=",")
+        daq_header = daq_csv[0]
+        daq_data = daq_csv[1:]
     
     egg_path = os.path.join(parent_dir, "egg.npy")
     egg_data = None
@@ -47,13 +55,14 @@ def create_visualizations(get_event):
         plot_spectrogram_and_intensity(sound, spectrogram, intensity, parent_dir)
         if egg_data is not None:
             plot_egg_data(egg_data, parent_dir)
+        if daq_data is not None:
+            plot_daq_data(daq_data, daq_header, parent_dir)
         # store parselmouth pitch information
-        logger.critical(f"Saving parselmouth stats to {parent_dir}...")
+        logger.debug(f"Saving parselmouth stats to {parent_dir}...")
         with open(os.path.join(parent_dir, "parsel_stats.txt"), "w") as f:
             print(sound, file=f)
             print(pitch, file=f)
             print(intensity, file=f)
-        print("Done")
 
 
 def plot_waveform(data, location):
@@ -132,6 +141,30 @@ def plot_egg_data(egg, location):
     plt.savefig(f"{location}/egg.png")
     plt.close()
 
+
+def plot_daq_data(data, header, location):
+    """
+    Creates a plot of the DAQ data.
+
+    Parameters
+    ----------
+    data: np.ndarray
+        DAQ data to be plotted.
+    header: np.ndarray
+        Header information for the DAQ data.
+    location: str
+        The directory where the plot will be saved.
+    """
+    time_col = data[:, 0]
+    for i, channel in enumerate(header, start=1):
+        plt.figure()
+        plt.plot(time_col, data[:, i], label=channel)
+        plt.xlabel("Time [s]")
+        plt.ylabel("Voltage [V]")
+        plt.grid(True)
+        plt.savefig(f"{location}/daq_data_{channel}.png")
+        logger.info(f"DAQ measurement plot for {channel} saved to {location}\\daq_data_{channel}.png")
+        plt.close()
 
 def create_image_grid(get_event):
     """
