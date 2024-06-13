@@ -97,7 +97,7 @@ class DAQ_Device:
         with self._file_lock:
             if data is not None:
                 header = ",".join(["time"] + self.analog_input_channels)
-                save_path = os.path.join(save_dir, "measurement.csv")
+                save_path = os.path.join(save_dir, "measurements.csv")
                 np.savetxt(save_path, data, delimiter=",", header=header, comments="")
                 logger.info(f"Successfully saved acquired DAQ data and saved it to {save_path}")
             else:
