@@ -49,17 +49,20 @@ class DAQ_Device:
             self.sample_rate = sample_rate
             self.sampling_time = sampling_time
             self.num_samples = int(sample_rate * sampling_time)
-        self.task_in = nidaqmx.Task()
-        self.task_out = nidaqmx.Task()
-        self.__setup_tasks()
-        logger.debug(f"Tasks created - input_buf_size: {self.task_in.in_stream.input_buf_size}, auto_start: {self.task_in.in_stream.auto_start}, channels_to_read: {self.task_in.in_stream.channels_to_read}, avail_samp_per_chan: {self.task_in.in_stream.avail_samp_per_chan}, input_onbrd_buf_size: {self.task_in.in_stream.input_onbrd_buf_size}, offset: {self.task_in.in_stream.offset}")
-        
-        # attributes for the thread pool
-        self._file_lock = threading.Lock()
-        self.id = 0
-        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        if self.device is not None:
+            self.task_in = nidaqmx.Task()
+            self.task_out = nidaqmx.Task()
+            self.__setup_tasks()
+            logger.debug(f"Tasks created - input_buf_size: {self.task_in.in_stream.input_buf_size}, auto_start: {self.task_in.in_stream.auto_start}, channels_to_read: {self.task_in.in_stream.channels_to_read}, avail_samp_per_chan: {self.task_in.in_stream.avail_samp_per_chan}, input_onbrd_buf_size: {self.task_in.in_stream.input_onbrd_buf_size}, offset: {self.task_in.in_stream.offset}")
+
+            # attributes for the thread pool
+            self._file_lock = threading.Lock()
+            self.id = 0
+            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     
     def __reinit_in_task(self):
+        if self.device is None:
+            return
         self.task_in.close()
         self.task_in = nidaqmx.Task()
         for ai_channel in self.analog_input_channels:
@@ -91,6 +94,8 @@ class DAQ_Device:
         self.task_out.start()
         
     def __save_as_csv(self, data, save_dir):
+        if self.device is None:
+            return
         with self._file_lock:
             if data is not None:
                 header = ",".join(["time"] + self.analog_input_channels)
@@ -179,6 +184,8 @@ class DAQ_Device:
         
     
     def delete_all_tasks(self):
+        if self.device is None:
+            return
         try:
             self.task_in.close()
             self.task_out.close()
