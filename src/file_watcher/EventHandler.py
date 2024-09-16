@@ -38,7 +38,7 @@ class ClientRecordingsFileHandler(PatternMatchingEventHandler):
         while snd is None:
             try:
                 snd = parselmouth.Sound(event.src_path)
-            except (parselmouth.PraatError, TypeError):
+            except (parselmouth.PraatError, TypeError, parselmouth.PraatWarning):
                 snd = None
                 logger.warning(f"Not yet finished creating {event.src_path}...")
                 time.sleep(0.1)

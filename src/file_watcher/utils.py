@@ -135,6 +135,8 @@ def plot_egg_data(egg, location):
     location: str
         The directory where the plot will be saved.
     """
+    if egg is None:
+        return
     plt.figure()
     
     plt.plot(egg)
