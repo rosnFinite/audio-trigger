@@ -49,16 +49,18 @@ class DAQ_Device:
             self.sample_rate = sample_rate
             self.sampling_time = sampling_time
             self.num_samples = int(sample_rate * sampling_time)
-        if self.device is not None:
+        # TODO: Handle case when no ni-daqmx is installed
+        try:
             self.task_in = nidaqmx.Task()
             self.task_out = nidaqmx.Task()
             self.__setup_tasks()
             logger.debug(f"Tasks created - input_buf_size: {self.task_in.in_stream.input_buf_size}, auto_start: {self.task_in.in_stream.auto_start}, channels_to_read: {self.task_in.in_stream.channels_to_read}, avail_samp_per_chan: {self.task_in.in_stream.avail_samp_per_chan}, input_onbrd_buf_size: {self.task_in.in_stream.input_onbrd_buf_size}, offset: {self.task_in.in_stream.offset}")
-
-            # attributes for the thread pool
-            self._file_lock = threading.Lock()
-            self.id = 0
-            self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+        except nidaqmx.errors.DaqNotFoundError:
+            logger.warning("No NI-DAQmx installation found on this system. Continuing without...")
+        # attributes for the thread pool
+        self._file_lock = threading.Lock()
+        self.id = 0
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
     
     def __reinit_in_task(self):
         if self.device is None:
@@ -99,7 +101,7 @@ class DAQ_Device:
         with self._file_lock:
             if data is not None:
                 header = ",".join(["time"] + self.analog_input_channels)
-                save_path = os.path.join(save_dir, "measurement.csv")
+                save_path = os.path.join(save_dir, "measurements.csv")
                 np.savetxt(save_path, data, delimiter=",", header=header, comments="")
                 logger.info(f"Successfully saved acquired DAQ data and saved it to {save_path}")
             else:
@@ -142,16 +144,11 @@ class DAQ_Device:
             logger.critical("NI-DAQmx not supported on this device. Continuing without...")
             return None
     
-    def start_acquisition(self, save_dir: str) -> None:
+    def start_acquisition(self) -> any:
         """Starts the data acquisition process with the provided settings and saves the acquired data to a file.
         Provided 'save_dir' must be a valid path to a directory where the data will be saved. Filename will be
         'measurements.csv'.
         Full path -> 'save_dir'/measurements.csv
-
-        Parameters
-        ----------
-        save_dir : str
-            Parent directory path where the acquired data will be saved as 'measurements.csv'.
         """
         if self.device is None:
             raise AttributeError("No DAQ device connected. Cannot start acquisition.")
@@ -174,13 +171,14 @@ class DAQ_Device:
                 d_list.append(measurements[:, np.newaxis])
             
             data = np.hstack(tuple(d_list))
-            self.__save_as_csv(data, save_dir)
+            # self.save_as_csv(data, save_dir)
         except nidaqmx.errors.DaqError as e:
             logger.critical(e)
             self.delete_all_tasks()
         # prepare for next acquisition
         # in_task needs to be reinit to be able to retrigger
-        self.__reinit_in_task()   
+        self.__reinit_in_task()
+        return data
         
     
     def delete_all_tasks(self):
