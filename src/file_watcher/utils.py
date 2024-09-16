@@ -219,18 +219,3 @@ def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):
             logger.error(e)
             continue
 
-if __name__ == "__main__":
-    event = {
-        "id":"111",
-        "dir_path": "anything",
-        "dir_trigger": "C:\\Users\\fabio\PycharmProjects\\audio-trigger\\src\\photron_raww\\test\\data",
-        "images": [
-            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
-            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
-            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww",
-            "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\photron_raww\\test\\data\\TEST_C001H001S0002000001.raww"
-        ],
-        "meta": "C:\\Users\\fabio\\PycharmProjects\\audio-trigger\\src\\photron_raww\\test\\data\\TEST_C001H001S0002.cihx"
-    }
-
-    create_image_grid(event)
