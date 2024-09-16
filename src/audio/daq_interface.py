@@ -33,7 +33,7 @@ class DAQ_Device:
             self.analog_input_channels = CONFIG["voice_field"]["analog_input_channels"]
             self.digital_trig_channel = CONFIG["voice_field"]["digital_trigger_channel"]
             self.sample_rate = CONFIG["voice_field"]["sample_rate"]
-            self.sampling_time = CONFIG["recorder"]["buffer_size"]
+            self.sampling_time = CONFIG["recorder"]["sampling_time"]
             self.num_samples = int(self.sample_rate * self.sampling_time)
         else:
             if analog_input_channels is None or digital_trig_channel is None:

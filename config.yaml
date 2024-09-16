@@ -53,6 +53,6 @@ voice_field:
   # [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
   sample_rate: 10000
   # [CONFIGURATION ONLY CHANGEABLE VIA THIS FILE]
-  number_of_samples: 1000
+  sampling_time: 0.2
 
 
