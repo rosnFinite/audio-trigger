@@ -36,21 +36,33 @@ def create_visualizations(get_event):
     intensity = sound.to_intensity()
     spectrogram = sound.to_spectrogram()
     pitch = sound.to_pitch()
+
+    # get daq measurements
+    daq_data = None
+    daq_header = None
+    if os.path.exists(os.path.join(parent_dir, "measurements.csv")):
+        daq_csv = np.genfromtxt(os.path.join(parent_dir, "measurements.csv"), delimiter=",")
+        daq_header = daq_csv[0]
+        daq_data = daq_csv[1:]
     
     egg_path = os.path.join(parent_dir, "egg.npy")
+    egg_data = None
     if os.path.exists(egg_path):
         egg_data = np.load(egg_path)
 
     with plot_lock:
         plot_waveform(sound, parent_dir)
         plot_spectrogram_and_intensity(sound, spectrogram, intensity, parent_dir)
-        plot_egg_data(egg_data, parent_dir)
-    # store parselmouth pitch information
-
-    with open(f"{parent_dir}/parsel_stats.txt", "w") as f:
-        print(sound, file=f)
-        print(pitch, file=f)
-        print(intensity, file=f)
+        if egg_data is not None:
+            plot_egg_data(egg_data, parent_dir)
+        if daq_data is not None:
+            plot_daq_data(daq_data, daq_header, parent_dir)
+        # store parselmouth pitch information
+        logger.debug(f"Saving parselmouth stats to {parent_dir}...")
+        with open(os.path.join(parent_dir, "parsel_stats.txt"), "w") as f:
+            print(sound, file=f)
+            print(pitch, file=f)
+            print(intensity, file=f)
 
 
 def plot_waveform(data, location):
@@ -123,12 +135,38 @@ def plot_egg_data(egg, location):
     location: str
         The directory where the plot will be saved.
     """
+    if egg is None:
+        return
     plt.figure()
     
     plt.plot(egg)
     plt.savefig(f"{location}/egg.png")
     plt.close()
 
+
+def plot_daq_data(data, header, location):
+    """
+    Creates a plot of the DAQ data.
+
+    Parameters
+    ----------
+    data: np.ndarray
+        DAQ data to be plotted.
+    header: np.ndarray
+        Header information for the DAQ data.
+    location: str
+        The directory where the plot will be saved.
+    """
+    time_col = data[:, 0]
+    for i, channel in enumerate(header, start=1):
+        plt.figure()
+        plt.plot(time_col, data[:, i], label=channel)
+        plt.xlabel("Time [s]")
+        plt.ylabel("Voltage [V]")
+        plt.grid(True)
+        plt.savefig(f"{location}/daq_data_{channel}.png")
+        logger.info(f"DAQ measurement plot for {channel} saved to {location}\\daq_data_{channel}.png")
+        plt.close()
 
 def create_image_grid(get_event):
     """
@@ -146,7 +184,7 @@ def create_image_grid(get_event):
     raww_to_jpg(img_paths, meta_path, get_event["dir_trigger"])
     # create image grid for frontend visualization
     # get file names for transformed images
-    image_files = image_files = [f"{os.path.join(get_event['dir_trigger'], os.path.split(f)[-1].split('.')[0])}.jpg"
+    image_files = image_files = [f"{os.path.join(get_event['dir_trigger'], os.path.split(f)[-1].split('.')[0])}.png"
                                  for f in img_paths]
     images = [Image.open(f) for f in image_files]
     # assuming all images are the same size
@@ -156,7 +194,7 @@ def create_image_grid(get_event):
     grid.paste(images[1], (width, 0))
     grid.paste(images[2], (0, height))
     grid.paste(images[3], (width, height))
-    grid.save(f"{get_event['dir_trigger']}/image_grid.jpg")
+    grid.save(f"{get_event['dir_trigger']}/image_grid.png")
 
 
 def raww_to_jpg(img_paths: List[str], meta_path: str, save_path: str):

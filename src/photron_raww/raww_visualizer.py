@@ -4,18 +4,18 @@ import numpy as np
 from PIL import Image
 from typing import Optional
 
-from . import cihx_parser
+from src.photron_raww import cihx_parser
 
 
 def transform_images(path: str, save_path: str, metadata_path: Optional[str] = None) -> None:
     """Transforms multiple raw image files (.raww) in a directory using metadata information and saves the results as
-    JPEG images.
+    PNG images.
 
     Note
     ----
     - The raw image files should have a '.raww' extension.
     - The metadata file should have a '.cihx' extension.
-    - Transformed images are saved in JPEG format with filenames derived from the original raw image files.
+    - Transformed images are saved in PNG format with filenames derived from the original raw image files.
     - 16-bit color information will be lost in the current version.
 
     Parameters
@@ -68,17 +68,17 @@ def transform_images(path: str, save_path: str, metadata_path: Optional[str] = N
         # Pillow.Image transforms 16-bit color information to 8-bit
         img = Image.fromarray(bin_image.reshape(img_metadata["width"], img_metadata["height"])).convert("L")
         filename = raww.split(".")[0]
-        img.save(f"{save_path}/{filename}.jpg")
+        img.save(os.path.join(save_path, f"{filename}.png"))
 
 
 def transform_image(path: str, save_path: str, metadata_path: str):
-    """Transforms a raw image file (.raww) using metadata information and saves the result as a JPEG image.
+    """Transforms a raw image file (.raww) using metadata information and saves the result as a 16-Bit PNG image.
 
     Note
     ----
     - The raw image file should have a '.raww' extension.
     - The metadata file should have a '.cihx' extension.
-    - The transformed image is saved in JPEG format with a filename derived from the original raw image file.
+    - The transformed image is saved in PNG format with a filename derived from the original raw image file.
     - 16-bit color information will be lost in the current version.
 
     Parameters
@@ -97,7 +97,7 @@ def transform_image(path: str, save_path: str, metadata_path: str):
 
     Examples
     --------
-    Transform an image to JPEG format and save it inside save_path
+    Transform an image to PNG format and save it inside save_path
 
     >>> transform_image("test/data/TEST_C001H001S0002000001.raww", "test/output", "test/data/TEST_C001H001S0002.cihx")
     """
@@ -110,10 +110,10 @@ def transform_image(path: str, save_path: str, metadata_path: str):
     # Pillow.Image transforms 16-bit color information to 8-bit
     img = Image.fromarray(bin_image.reshape(img_metadata["width"], img_metadata["height"])).convert("L")
     filename = os.path.split(path)[1].split(".raww")[0]
-    img.save(os.path.join(save_path, f"{filename}.jpg"))
+    img.save(os.path.join(save_path, f"{filename}.png"), bits=16)
 
 
 if __name__ == "__main__":
-    transform_image("test/data/TEST_C001H001S0002000001.raww",
+    transform_image("test/data/TEST_C001H001S0002000002.raww",
                     metadata_path="test/data/TEST_C001H001S0002.cihx",
                     save_path="test/output")

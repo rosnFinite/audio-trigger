@@ -632,19 +632,23 @@ class Trigger:
         """
         self.id += 1
         self.voice_field.update_field_at(db_bin, freq_bin, score)
-        # TODO: Needs to be sped up, especially the call to local file system (takes a proportionally long time ~100ms)
-        data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{db_bin}_{freq_bin}"))
 
+        daq_data = None
+        try:
+            logger.debug(f"RUNTIME RECORDING -> ACQUISITON {time.time() - cb_start_t:.4f}s")
+            daq_data = self.daq.start_acquisition()
+        except AttributeError as e:
+            logger.critical(e)
+
+        data_dir = self.__create_versioned_dir(os.path.join(self.rec_destination, f"{db_bin}_{freq_bin}"))
         # create a file named after newly added folder to parent dir of client recordings
         # this allows to easily find the latest added trigger for referencing corresponding camera images
         with open(os.path.join(os.path.split(self.rec_destination)[0], ".latest_trigger"), "w+") as f:
             f.write(data_dir)
 
-        try:
-            logger.debug(f"RUNTIME RECORDING -> ACQUISITON {time.time() - cb_start_t:.4f}s")
-            self.daq.start_acquisition(save_dir=data_dir)
-        except AttributeError as e:
-            logger.critical(e)
+        if daq_data is not None:
+            self.daq.save_as_csv(daq_data, data_dir)
+
         praat_stats = measure_praat_stats(sound, fmin=self.voice_field.freq_min, fmax=self.voice_field.freq_max)
         self.emit_trigger(freq_bin, db_bin, score, praat_stats)
         self.__submit_threadpool_task(self.save_data, data_dir, trigger_data, praat_stats, freq_bin, freq, db_bin,
@@ -716,7 +720,7 @@ class Trigger:
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
             return True
         # check if new score is [retrigger_percentage_improvement] % better than of existing score
-        if existing_score < score and score / existing_score - 1 > self.retrigger_percentage_improvement:
+        if existing_score < score and score / existing_score - 1 >= self.retrigger_percentage_improvement:
             self.__perform_trigger(sound, freq, freq_bin, db_bin, score, trigger_data)
             logger.info(f"VOICE_FIELD entry updated - score: {existing_score} -> {score}, "
                         f"runtime: {time.time() - start:.4f} seconds, save_data thread id: {self.id}.")
