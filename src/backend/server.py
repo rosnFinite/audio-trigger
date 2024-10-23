@@ -8,7 +8,6 @@ from flask import Flask, request, send_from_directory, jsonify, Response
 from flask_socketio import SocketIO, emit, join_room, leave_room, disconnect
 from flask_cors import CORS
 
-from src.audio.recorder import AudioRecorder
 from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)
@@ -62,8 +61,6 @@ def get_devices() -> Tuple[Dict[str, List[Dict[str, str | Any]]], int]:
     """
     logger.info(f"GET /audio-client/devices received.")
     device_list = []
-    for idx, device in enumerate(AudioRecorder().recording_devices):
-        device_list.append({"id": str(idx), "name": device})
     return {"devices": device_list}, 200
 
 

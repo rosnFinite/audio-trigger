@@ -2,7 +2,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 import parselmouth
-from src.audio.processing.scoring import calc_quality_score, calc_pitch_score
+from src.voice_analysis.postprocessing.scoring import calc_quality_score, calc_pitch_score
 
 
 def create_mock_sound(data, rate, freq_floor=None, freq_ceiling=None):

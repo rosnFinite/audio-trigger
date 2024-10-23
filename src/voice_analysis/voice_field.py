@@ -10,8 +10,8 @@ import numpy as np
 import parselmouth
 import scipy.io.wavfile as wav
 
-from src.audio.processing.utility import measure_praat_stats
-from src.audio.daq_interface import DAQ_Device
+from src.voice_analysis.postprocessing.utility import measure_praat_stats
+from src.voice_analysis.daq_interface import DAQ_Device
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -500,6 +500,7 @@ class Trigger:
 
     def __init__(self,
                  voice_field: VoiceField,
+                 daq: DAQ_Device,
                  rec_destination: str,
                  min_score: float = 0.7,
                  retrigger_percentage_improvement: float = 0.1,
@@ -508,7 +509,7 @@ class Trigger:
         self.min_score = min_score
         self.retrigger_percentage_improvement = retrigger_percentage_improvement
         self.socket = socket
-        self.daq = DAQ_Device(from_config=True)
+        self.daq = daq
         self.voice_field = voice_field
 
         # attributes for the thread pool

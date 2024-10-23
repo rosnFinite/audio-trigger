@@ -7,9 +7,10 @@ import logging
 
 from typing import List, Dict
 
-from src.audio.recorder import AudioTriggerRecorder
+from src.voice_analysis.recorder import AudioTriggerRecorder
 from src.config_utils import CONFIG
 from src.exception_manager import emit_exception
+from src.voice_analysis.voice_range_profiler import VoiceRangeProfiler
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -19,7 +20,7 @@ logger.addHandler(file_handler)
 
 client = socketio.Client(engineio_logger=False)
 this = sys.modules[__name__]
-this.trigger_recorder = None
+this.voice_range_profiler = None
 
 
 @client.on("connect")
@@ -58,42 +59,23 @@ def on_settings_change(settings: dict) -> None:
         destination = os.path.join(CONFIG["client_recordings_path"], f"{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
     else:
         destination = os.path.join(CONFIG["client_recordings_path"], f"{settings['patient']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}")
-    if this.trigger_recorder is not None:
-        this.trigger_recorder.trigger.daq.delete_all_tasks()
-    this.trigger_recorder = AudioTriggerRecorder(rec_destination=destination,
+    this.voice_range_profiler = VoiceRangeProfiler(rec_destination=destination,
                                                  min_score=settings["min_score"],
                                                  retrigger_percentage_improvement=settings["retrigger_percentage_improvement"],
                                                  semitone_bin_size=settings["frequency"]["steps"],
                                                  freq_bounds=(settings["frequency"]["lower"], settings["frequency"]["upper"]),
                                                  dba_bin_size=settings["db"]["steps"],
                                                  dba_bounds=(settings["db"]["lower"], settings["db"]["upper"]),
-                                                 buffer_size=settings["buffer_size"],
-                                                 channels=1 if settings["mono"] else 2,
-                                                 rate=settings["sampling_rate"],
-                                                 chunk_size=settings["chunk_size"],
+                                                 sampling_time=settings["buffer_size"],
+                                                 sampling_rate=settings["sampling_rate"],
                                                  socket=client)
-    settings["save_location"] = this.trigger_recorder.rec_destination
-    if settings["device"] == -1:
-        this.trigger_recorder.recording_device = 1
-        #TODO: Ändern für automatische Auswahl des iMic-Microphone
-    else:
-        this.trigger_recorder.recording_device = settings["device"]
+    this.voice_range_profiler.configure_daq_inputs(anlg_input_channels=["ai0", "ai1"], cam_trig_channel="pfi0")
+    settings["save_location"] = this.voice_range_profiler.rec_destination
     settings["status"] = "ready"
 
     logger.debug("Verifying number of channels for selected audio device...")
     # try opening audio stream to verify number channels are supported
-    if this.trigger_recorder.try_open_stream(input_device_index=this.trigger_recorder.recording_device):
-        logger.debug("Audio device supports the required number of channels.")
-        logger.debug("Emitting changed settings to server...")
-        client.emit("settings_update_complete", settings)
-    else:
-        this.trigger_recorder = None
-        logger.error("Audio device does not support the required number of channels.")
-        emit_exception(client, exception_level="critical", exception_title="Prozess konnte nicht gestartet werden!",
-                       exception_description="Aufnahmegerät unterstützt NICHT die eingestellte "
-                                             "Anzahl an Kanälen. Gerät oder Kanalanzahl anpassen.")
-        client.emit("status_update_complete",
-                    {"status": "offline", "save_location": None})
+    client.emit("settings_update_complete", settings)
 
 
 @client.on("status_update_request")
@@ -107,26 +89,26 @@ def on_status_update(action: dict) -> None:
         Dictionary containing the action trigger.
     """
     logger.info(f"Change status event received: {action}")
-    if this.trigger_recorder is None:
+    if this.voice_range_profiler is None:
         logger.error("No trigger instance available. Cannot perform action.")
         return
     if action["trigger"] == "start":
         # only do smth if trigger is not already running
-        if not this.trigger_recorder.stream_thread_is_running:
-            logger.info(f"Starting trigger, device: {this.trigger_recorder.recording_device}")
-            this.trigger_recorder.start_trigger()
-            client.emit("status_update_complete", {"status": "running", "save_location": this.trigger_recorder.rec_destination})
+        if not this.voice_range_profiler.examination_is_running:
+            logger.info("STARTING examination...")
+            this.voice_range_profiler.start_examination()
+            client.emit("status_update_complete", {"status": "running", "save_location": this.voice_range_profiler.rec_destination})
     if action["trigger"] == "stop":
         # only do smth if trigger is currently running
-        if this.trigger_recorder.stream_thread_is_running:
-            this.trigger_recorder.stop_trigger()
-            logger.info("AudioTriggerRecorder stopped.")
-            client.emit("status_update_complete", {"status": "ready", "save_location": this.trigger_recorder.rec_destination})
+        if this.voice_range_profiler.examination_is_running:
+            this.voice_range_profiler.stop_examination()
+            logger.info("STOPPING examination...")
+            client.emit("status_update_complete", {"status": "ready", "save_location": this.voice_range_profiler.rec_destination})
     if action["trigger"] == "reset":
-        if not this.trigger_recorder.stream_thread_is_running:
-            this.trigger_recorder.rec_destination = this.trigger_recorder.trigger.reset_field()
-            logger.info("AudioTriggerRecorder reset.")
-            client.emit("status_update_complete", {"status": "reset", "save_location": this.trigger_recorder.rec_destination})
+        if not this.voice_range_profiler.examination_is_running:
+            logger.info("RESETTING examination")
+            this.voice_range_profiler.rec_destination = this.voice_range_profiler.trigger.reset_field()
+            client.emit("status_update_complete", {"status": "reset", "save_location": this.voice_range_profiler.rec_destination})
 
 
 @client.on("remove_recording_request")
@@ -138,7 +120,7 @@ def on_remove_recording(grid_location: dict) -> None:
     grid_location : dict
         Dictionary containing the grid location of the recording to be removed. {freqBin, dbBin}
     """
-    this.trigger_recorder.voice_field.field[grid_location["dbaBin"]][grid_location["freqBin"]] = None
+    this.voice_range_profiler.voice_field.field[grid_location["dbaBin"]][grid_location["freqBin"]] = None
     logger.info(f"Removed recording at grid location: {grid_location}")
 
 

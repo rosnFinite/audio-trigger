@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.audio.daq_interface import DAQ_Device
+from src.voice_analysis.daq_interface import DAQ_Device
 
 
 @pytest.fixture

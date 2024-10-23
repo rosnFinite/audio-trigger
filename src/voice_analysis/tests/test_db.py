@@ -3,7 +3,7 @@ import math
 import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
-from src.audio.processing.db import get_dba_level, interp_correction  # Adjust the import path to your module
+from src.voice_analysis.postprocessing.db import get_dba_level, interp_correction  # Adjust the import path to your module
 
 
 def test_get_dba_level_no_correction():

@@ -13,9 +13,9 @@ sys.path.append("D:\\rosef\\audio-trigger")
 
 from components.accordion_panels import CalibrationPanel, DataPanel
 from components.information_texts import IntroductionText
-from src.audio.recorder import Trigger
+from src.voice_analysis.recorder import Trigger
 from utility import load_recording_devices, default_plot, get_audio_file_names, get_calibration_file_names, plot_abs_fft
-from src.audio.processing.db import get_dba_level
+from src.voice_analysis.postprocessing.db import get_dba_level
 
 # this is a pointer to the module object instance itself.
 this = sys.modules[__name__]

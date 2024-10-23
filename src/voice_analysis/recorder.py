@@ -12,9 +12,9 @@ import scipy.io.wavfile as wav
 import collections
 import socketio
 
-from src.audio.voice_field import VoiceField, Trigger
-from src.audio.processing.db import get_dba_level
-from src.audio.processing.scoring import calc_pitch_score
+from src.voice_analysis.voice_field import VoiceField, Trigger
+from src.voice_analysis.postprocessing.db import get_dba_level
+from src.voice_analysis.postprocessing.scoring import calc_pitch_score
 from src.config_utils import CONFIG
 
 logger = logging.getLogger(__name__)

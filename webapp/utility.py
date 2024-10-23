@@ -8,7 +8,7 @@ import numpy as np
 import plotly.graph_objs as go
 from typing import List, Optional, Tuple
 
-from src.audio.processing.scoring import calc_quality_score, fourier_transform
+from src.voice_analysis.postprocessing.scoring import calc_quality_score, fourier_transform
 
 module_path = os.path.abspath(__file__)
 module_dir = os.path.dirname(module_path)

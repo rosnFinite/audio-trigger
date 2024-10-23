@@ -7,7 +7,7 @@ import pytest
 import numpy as np
 from unittest.mock import patch, MagicMock
 
-from src.audio.recorder import AudioRecorder, AudioTriggerRecorder
+from src.voice_analysis.recorder import AudioRecorder, AudioTriggerRecorder
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import numpy as np
 import pytest
 
-from src.audio.voice_field import VoiceField
+from src.voice_analysis.voice_field import VoiceField
 
 
 @pytest.fixture
