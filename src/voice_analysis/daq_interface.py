@@ -53,7 +53,7 @@ class DAQ_Device:
         
         # TODO: Handle case when no ni-daqmx is installed
         try:
-            self.cont_read_task = nidaqmx.Task()
+            self.cont_read_task = None
             self.cam_trig_task = nidaqmx.Task()
         except nidaqmx.errors.DaqNotFoundError:
             logger.warning("No NI-DAQmx installation found on this system. Continuing without...")
@@ -63,6 +63,8 @@ class DAQ_Device:
         self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
         
     def __setup_cont_read_task(self):
+        logger.info("Starting continuous acquisition task.")
+        self.cont_read_task = nidaqmx.Task()
         for ai_channel in self.analog_input_channels:
             self.cont_read_task.ai_channels.add_ai_voltage_chan(f"/{self.device.name}/{ai_channel}")
         
@@ -136,11 +138,12 @@ class DAQ_Device:
                                 {"status": "waiting", "save_location": self.rec_destination})
             return 0
 
-        self.cont_read_task.register_every_n_samples_acquired_into_buffer_event(self.num_samples, cont_read_task_callback, )
+        self.cont_read_task.register_every_n_samples_acquired_into_buffer_event(self.num_samples, cont_read_task_callback)
         
         self.cont_read_task.start()
     
     def stop_cont_acquisition(self):
+        logger.info("Stopping continous acquisition task.")
         self.cont_read_task.close()
     
     def __save_as_csv(self, data, save_dir):
@@ -242,37 +245,4 @@ class DAQ_Device:
             self.task_out.close()
         except nidaqmx.errors.DaqError:
             logger.warning("Tasks seem to be closed already.")
-            
-if __name__ == "__main__":
-    in_task = nidaqmx.task.Task(new_task_name="AcqTask")
-    in_task.ai_channels.add_ai_voltage_chan("/Dev1/ai0")
-    in_task.ai_channels.add_ai_voltage_chan("/Dev1/ai1")
-    
-    in_task.timing.cfg_samp_clk_timing(
-        rate=20000,
-        sample_mode=nidaqmx.constants.AcquisitionType.CONTINUOUS,
-        samps_per_chan=10000
-    )
-    
-    def reading_task_callback(task_idx, event_type, num_samples, callback_data=None):
-        """After data has been read into the NI buffer this callback is called to read in the data from the buffer.
 
-        This callback is for working with the task callback register_every_n_samples_acquired_into_buffer_event.
-
-        Args:
-            task_idx (int): Task handle index value
-            event_type (nidaqmx.constants.EveryNSamplesEventType): ACQUIRED_INTO_BUFFER
-            num_samples (int): Number of samples that was read into the buffer.
-            callback_data (object)[None]: No idea. Documentation says: The callback_data parameter contains the value
-                you passed in the callback_data parameter of this function.
-        """
-        print("acq")
-        return 0
-
-    
-    in_task.register_every_n_samples_acquired_into_buffer_event(10000, reading_task_callback)
-   
-    in_task.start()
-   
-    time.sleep(5)
-    in_task.close()
